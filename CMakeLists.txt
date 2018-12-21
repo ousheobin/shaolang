@@ -18,4 +18,7 @@ include_directories(src)
 
 add_executable(shaolang
         src/shaolang.cpp
-        src/shaolang.h src/argument.h src/lexer.cpp src/lexer.h src/scanner.h src/scanner.cpp)
+        src/shaolang.h
+        src/argument.h
+        src/scanner.h 
+        src/scanner.cpp)
