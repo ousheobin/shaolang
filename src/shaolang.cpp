@@ -1,24 +1,43 @@
 //
-//  shaolang.cpp
-//  shaolang
-//
-//  Created by Ou Sheobin on 2018/12/20.
+// Created by Ou Sheobin on 2018/12/21.
 //
 
 #include <iostream>
-#include "shaolang.hpp"
+#include <vector>
+#include <cstring>
+#include "scanner.h"
+#include "argument.h"
+#include "shaolang.h"
 
 using namespace std;
 
-int main(int argc, char *argv[]){
-    if( argc < 2){
-        cout << "Error: Nothing is specified. \nUsage: \nshaolang xxx.sheo"<<endl;
+int main(int argc, char * argv[]){
+    vector<char *> files;
+    if( argc > 1 ){
+        for(int i = 1 ; i < argc ; i ++ ){
+            char * arg = argv[i];
+            if( arg[0] == '-'){
+                if(!strcmp("-h",arg)){
+                    CompilerArguments::showHelp = true;
+                }else{
+                    cout << "无效指令，请使用 shaolang -h 查询 "<<endl;
+                    return 2;
+                }
+            }else{
+                files.push_back(arg);
+            }
+        }
     }
-    base_path = new string(argv[0]);
-    string * target_file = new string(argv[1]);
-#ifdef DEBUG
-    cout <<"base path:"<< *base_path << endl;
-    cout <<"target file:"<< *target_file << endl;
-#endif
+    if(CompilerArguments::showHelp){
+        cout<<"shaoLang 编译器 Version "<<SHAOLANG_COMPLIER_VERSION<<endl
+        <<"用法:\nshaolang 源文件 [options]\n"<<endl
+        <<"Options:\n-h 显示帮助信息"<<endl;
+    }else if(!files.empty()){
+
+    }else{
+        cout << "无效指令，请使用 shaolang -h 查询 "<<endl;
+        return 2;
+    }
+
     return 0;
 }
