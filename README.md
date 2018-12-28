@@ -3,15 +3,15 @@
 
 A tiny complier.
 
- ### Dependencies ###
+### Dependencies ###
 
- - CMAKE( 3.6 and above)
- - GCC or CLang
+- CMAKE( 3.6 and above)
+- GCC or CLang
 
- ### Build  ###
+### Build  ###
 
- **Mac OSX**
- ```bash
+**Mac OSX**
+```shell
  chmod a+x build.sh
  ./build.sh
 ```
