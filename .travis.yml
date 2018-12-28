@@ -65,4 +65,4 @@ matrix:
     - os: windows
 
 
-script: cmake ./ & make
+script: cmake . & make
