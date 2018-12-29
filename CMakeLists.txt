@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 2.8)
 project(shaolang)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -20,5 +20,7 @@ add_executable(shaolang
         src/shaolang.cpp
         src/shaolang.h
         src/argument.h
-        src/scanner.h 
-        src/scanner.cpp)
+        src/lexer.cpp
+        src/lexer.h
+        src/scanner.h
+        src/scanner.cpp src/common.h src/token.h src/token.cpp src/keyword.h src/keyword.cpp)
