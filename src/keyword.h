@@ -8,11 +8,10 @@
 #include <functional>
 
 #if defined(WIN32) || defined(WIN64)
-#include <hash_map>
+#include <unordered_map>
 using namespace stdext;
 #else
-#include <ext/hash_map>
-using namespace __gnu_cxx;
+#include <unordered_map>
 #endif
 
 #include "common.h"
@@ -33,11 +32,12 @@ private:
 #endif
         }
     };
-    hash_map<string,LexicalType,str_hash> hashMap;
+    unordered_map<string,LexicalType,str_hash> hashMap;
 public:
     KeyWord();
     ~KeyWord();
     LexicalType get_type(string name);
+    bool contains(string name);
 };
 
 #endif //SHAOLANG_KEYWORD_H

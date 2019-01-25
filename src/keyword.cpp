@@ -5,7 +5,7 @@
 #include "keyword.h"
 
 KeyWord::KeyWord() {
-    hashMap["float"] = TK_FLOAT;
+    hashMap["double"] = TK_DOUBLE;
     hashMap["int"] = TK_INT;
     hashMap["char"] = TK_CHAR;
     hashMap["void"] = TK_VOID;
@@ -24,6 +24,10 @@ KeyWord::KeyWord() {
 
 KeyWord::~KeyWord() {
     hashMap.clear();
+}
+
+bool KeyWord::contains(string name) {
+    return hashMap.find( name ) != hashMap.end();
 }
 
 LexicalType KeyWord::get_type(string name) {

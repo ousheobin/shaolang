@@ -35,11 +35,15 @@ int FileScanner::get_current_column() {
     return current_column_number;
 }
 
+char FileScanner::get_current_char() {
+    return current_char;
+}
+
 char* FileScanner::get_file_name() {
     return file_name;
 }
 
-char FileScanner::next_char() {
+char FileScanner::move() {
 
     if(file == NULL){
         return -1;
@@ -54,7 +58,7 @@ char FileScanner::next_char() {
         current_read_position = -1;
     }
 
-    char current_ch = buffer[++ current_read_position];
+    char current_scan_ch = buffer[++ current_read_position];
 
 #ifdef LF
     if(last_char == '\n'){
@@ -67,13 +71,25 @@ char FileScanner::next_char() {
         current_column_number = 0;
     }
 #endif
-    if(current_ch > 0){
+    if(current_scan_ch > 0){
         current_column_number ++;
     }else{
         fclose(file);
         file = NULL;
     }
-    last_char = current_ch;
+    this->last_char = current_char;
+    this->current_char = current_scan_ch;
 
-    return current_ch;
+    return current_char;
+}
+
+char FileScanner::scan_and_move(char target) {
+
+    if(!target){
+        return false;
+    }
+
+    this -> move();
+    return this->current_char == target;
+
 }

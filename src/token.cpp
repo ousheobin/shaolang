@@ -10,7 +10,7 @@ Token::Token(LexicalType t):type(t) {
 }
 
 string Token::to_string() {
-    return typeName[type];
+    return "["+typeName[type]+"]" ;
 }
 
 Token::~Token() {
@@ -21,7 +21,7 @@ IDToken::IDToken(string id):Token(ID) {
 }
 
 string IDToken::to_string() {
-    return "["+Token::to_string()+"]:"+ name;
+    return "["+typeName[type]+"]:"+ name;
 }
 
 IntegerToken::IntegerToken(int value):Token(C_INTEGER) {
@@ -31,7 +31,7 @@ IntegerToken::IntegerToken(int value):Token(C_INTEGER) {
 string IntegerToken::to_string() {
     std::stringstream stream;
     stream<<value;
-    return "["+Token::to_string()+"]:"+stream.str();
+    return "["+typeName[type]+"]:"+stream.str();
 }
 
 FloatToken::FloatToken(double value):Token(C_FLOAT){
@@ -41,7 +41,7 @@ FloatToken::FloatToken(double value):Token(C_FLOAT){
 string FloatToken::to_string() {
     std::stringstream stream;
     stream<<value;
-    return "["+Token::to_string()+"]:"+stream.str();
+    return "["+typeName[type]+"]:"+stream.str();
 }
 
 CharToken::CharToken(char value):Token(C_CHAR) {
@@ -49,7 +49,7 @@ CharToken::CharToken(char value):Token(C_CHAR) {
 }
 
 string CharToken::to_string() {
-    return "["+Token::to_string()+"]:"+ value;
+    return "["+typeName[type]+"]:"+ value;
 }
 
 StringToken::StringToken(string value):Token(C_STRING) {
@@ -57,5 +57,5 @@ StringToken::StringToken(string value):Token(C_STRING) {
 }
 
 string StringToken::to_string() {
-    return "["+Token::to_string()+"]:"+ value;
+    return "["+typeName[type]+"]:"+ value;
 }
