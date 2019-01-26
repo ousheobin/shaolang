@@ -1,4 +1,4 @@
-//
+﻿//
 // Created by Ou Sheobin on 2018/12/21.
 //
 
@@ -24,6 +24,7 @@ private:
 
     bool  check_is_valid_char(const char ch);
     bool  check_is_number(const char ch);
+    bool  check_is_blank(const char ch);
 
 public:
 

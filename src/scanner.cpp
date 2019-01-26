@@ -1,4 +1,4 @@
-//
+﻿//
 // Created by Ou Sheobin on 2018/12/21.
 //
 
@@ -32,7 +32,7 @@ int FileScanner::get_current_line() {
 }
 
 int FileScanner::get_current_column() {
-    return current_column_number;
+    return current_column_number + 1;
 }
 
 char FileScanner::get_current_char() {

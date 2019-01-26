@@ -1,4 +1,4 @@
-//
+﻿//
 // Created by Ou Sheobin on 2018/12/21.
 //
 
@@ -9,8 +9,9 @@ class CompilerArguments
 {
 public:
     static bool showHelp;
+    static bool showLexicalResult;
 };
 
-bool CompilerArguments::showHelp = false;
+
 
 #endif //SHAOLANG_ARGUMENT_H

@@ -1,4 +1,4 @@
-//
+﻿//
 // Created by Ou Sheobin on 2018/12/29.
 //
 
@@ -20,16 +20,9 @@ using namespace stdext;
 class KeyWord{
 private:
     struct str_hash{
-        size_t operator()(const string& str) const
-        {
-#ifdef MAC_OSX
+        size_t operator()(const string& str) const {
             std::hash<std::string> hash_struct;
             return hash_struct(str.c_str());
-#elif WINDOWS
-            return stdext::hash(str.c_str());
-#else
-            return __stl_hash_string(str.c_str());
-#endif
         }
     };
     unordered_map<string,LexicalType,str_hash> hashMap;

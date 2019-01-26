@@ -1,17 +1,21 @@
-//
+﻿//
 // Created by Ou Sheobin on 2018/12/21.
 //
 
 #include <vector>
+#include <sstream>
 
 #include "lexer.h"
+#include "error.h"
 
-#define LEXICAL_ERROR(error) cout<<"error"<<endl;
+#define LEXICAL_ERROR(err_msg) Error::showMessage(ErrorType::Error,err_msg);
 
 KeyWord Lexer::keyWord;
 
 Lexer::Lexer(FileScanner &sc):scanner(sc) {
     this -> current_char = scanner.move();
+    this -> current_token = NULL;
+    Error::set_scanner(&sc);
 }
 
 Lexer::~Lexer() {
@@ -24,8 +28,7 @@ Lexer::~Lexer() {
 Token * Lexer::next_token() {
     while (current_char != -1){
         Token * token = NULL;
-        while( current_char == ' '  || current_char == '\t' ||
-               current_char == '\n' || current_char == '\r' ){
+        while( check_is_blank(current_char) ){
             current_char = scanner.move();
         }
         // 标识符或关键字
@@ -69,6 +72,7 @@ Token * Lexer::next_token() {
                 }
                 if(current_char=='\r'|| current_char=='\n'|| current_char < 0){
                     // [异常] 提前结束，字符串没有闭合
+                    LEXICAL_ERROR("字符串没有结束，请检查是否缺少 '\"' .");
                     token = new Token(LexicalType::ERR);
                     if(current_token){
                         delete token;
@@ -103,9 +107,11 @@ Token * Lexer::next_token() {
                 }
             }else if( current_char == '\''){
                 // [异常] 字符为空
+                LEXICAL_ERROR("字符不能为空.");
                 token = new Token(LexicalType::ERR);
             }else if(current_char=='\r'|| current_char=='\n'|| current_char < 0){
                 // [异常] 提前结束
+                LEXICAL_ERROR("字符没有结束，请检查是否缺少 '\"' .");
                 token = new Token(LexicalType::ERR);
             }else{
                 character = current_char;
@@ -116,6 +122,7 @@ Token * Lexer::next_token() {
                     token = new CharToken(character);
                 }else{
                     // [异常] 没有右侧单引号
+                    LEXICAL_ERROR("字符缺少右侧单引号.");
                     token = new Token(ERR);
                 }
             }
@@ -141,6 +148,16 @@ Token * Lexer::next_token() {
 
                 if(current_char == '.'){
                     // [异常] 重复的小数点
+                    LEXICAL_ERROR("出现重复的小数点，请检查浮点数是否合法.");
+                    do{
+                        current_char = scanner.move();
+                    } while (check_is_number(current_char)||check_is_valid_char(current_char)||current_char == '.');
+                    token = new Token(LexicalType::ERR);
+                }else if(check_is_valid_char(current_char) || current_char == '_'){
+                    LEXICAL_ERROR("浮点数的数字部分不允许出现字符.");
+                    do{
+                        current_char = scanner.move();
+                    } while (check_is_number(current_char)||check_is_valid_char(current_char)||current_char == '.');
                     token = new Token(LexicalType::ERR);
                 }else{
                     token = new FloatToken(value+float_value);
@@ -149,7 +166,13 @@ Token * Lexer::next_token() {
             } else if( current_char == ' '  || current_char == '\t' ||
                      current_char == '\n' || current_char == '\r' ){
                 token = new IntegerToken(value);
-            } else{
+            }else if(check_is_valid_char(current_char) || current_char == '_'){
+                do{
+                    current_char = scanner.move();
+                } while (check_is_number(current_char)||check_is_valid_char(current_char)||current_char == '.');
+                LEXICAL_ERROR("ShaoLang不允许使用数字作为标识符的开头.");
+                token = new Token(LexicalType::ERR);
+            }else{
                 // 整数
                 token = new Token(LexicalType::ERR);
             }
@@ -265,7 +288,11 @@ Token * Lexer::next_token() {
                     break;
                 default:
                     // [错误] 词法记号错误
+                    stringstream ss;
+                    ss << "符号'" << current_char << "'不是ShaoLang可用的运算符";
+                    LEXICAL_ERROR(ss.str());
                     token = new Token(LexicalType::ERR);
+                    current_char = scanner.move();
             }
         }
         if(this->current_token){
@@ -286,13 +313,15 @@ Token * Lexer::next_token() {
 }
 
 bool Lexer::check_is_valid_char(const char ch){
-    if((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_' ){
-        return true;
-    }
-    return false;
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_' ;
 }
 
 bool Lexer::check_is_number(const char ch) {
     return ch >= '0' && ch <= '9';
+}
+
+bool Lexer::check_is_blank(const char ch) {
+    return current_char == ' '  || current_char == '\t' ||
+           current_char == '\n' || current_char == '\r';
 }
 
