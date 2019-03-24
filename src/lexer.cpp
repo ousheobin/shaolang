@@ -162,7 +162,6 @@ Token * Lexer::next_token() {
                 }else{
                     token = new FloatToken(value+float_value);
                 }
-
             } else if( current_char == ' '  || current_char == '\t' ||
                      current_char == '\n' || current_char == '\r' ){
                 token = new IntegerToken(value);
@@ -174,7 +173,7 @@ Token * Lexer::next_token() {
                 token = new Token(LexicalType::ERR);
             }else{
                 // 整数
-                token = new Token(LexicalType::ERR);
+                token = new IntegerToken(value);
             }
         }
         // 界符
