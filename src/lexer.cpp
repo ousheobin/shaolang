@@ -181,6 +181,7 @@ Token * Lexer::next_token() {
             switch (current_char){
                 case '+':
                     if(scanner.scan_and_move('+')){
+                        scanner.move();
                         token = new Token(LexicalType::INC);
                     }else{
                         token = new Token(LexicalType::ADD);
@@ -189,6 +190,7 @@ Token * Lexer::next_token() {
                     break;
                 case '-':
                     if(scanner.scan_and_move('-')){
+                        scanner.move();
                         token = new Token(LexicalType::DEC);
                     }else{
                         token = new Token(LexicalType::SUB);
@@ -209,6 +211,7 @@ Token * Lexer::next_token() {
                     break;
                 case '!':
                     if(scanner.scan_and_move('=')){
+                        scanner.move();
                         token = new Token(LexicalType::NEQ);
                     }else{
                         token = new Token(LexicalType::NOT);
@@ -217,6 +220,7 @@ Token * Lexer::next_token() {
                     break;
                 case '>':
                     if(scanner.scan_and_move('=')){
+                        scanner.move();
                         token = new Token(LexicalType::GE);
                     }else{
                         token = new Token(LexicalType::GT);
@@ -225,6 +229,7 @@ Token * Lexer::next_token() {
                     break;
                 case '<':
                     if(scanner.scan_and_move('=')){
+                        scanner.move();
                         token = new Token(LexicalType::LE);
                     }else{
                         token = new Token(LexicalType::LT);
@@ -233,6 +238,7 @@ Token * Lexer::next_token() {
                     break;
                 case '&':
                     if(scanner.scan_and_move('&')){
+                        scanner.move();
                         token = new Token(LexicalType::AND);
                     }else{
                         token = new Token(LexicalType::LEA);
@@ -241,11 +247,25 @@ Token * Lexer::next_token() {
                     break;
                 case '=':
                     if(scanner.scan_and_move('=')){
+                        scanner.move();
                         token = new Token(LexicalType::EQ);
                     }else{
                         token = new Token(LexicalType::ASSIGN);
                     }
                     current_char = scanner.get_current_char();
+                    break;
+                case '|':
+                    if(scanner.scan_and_move('|')){
+                        scanner.move();
+                        token = new Token(LexicalType::OR);
+                        current_char = scanner.get_current_char();
+                    }else{
+                        stringstream ss;
+                        ss << "符号'" << current_char << "'不是ShaoLang可用的运算符";
+                        LEXICAL_ERROR(ss.str());
+                        token = new Token(LexicalType::ERR);
+                        current_char = scanner.move();
+                    }
                     break;
                 case ',':
                     token = new Token(LexicalType::COMMA);
