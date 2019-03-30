@@ -69,6 +69,8 @@ Token * Lexer::next_token() {
                         default:
                             str += current_char;
                     }
+                } else{
+                    str += current_char;
                 }
                 if(current_char=='\r'|| current_char=='\n'|| current_char < 0){
                     // [异常] 提前结束，字符串没有闭合
@@ -81,10 +83,11 @@ Token * Lexer::next_token() {
                     return current_token;
                 }
             }
+            current_char = scanner.move();
             token = new StringToken(str);
         }
         // 单个字符
-        else if(current_char == '"'){
+        else if(current_char == '\''){
             char character;
             current_char = scanner.move();
             if(current_char == '\''){
@@ -117,14 +120,13 @@ Token * Lexer::next_token() {
                 character = current_char;
             }
 
-            if(!token){
-                if(scanner.scan_and_move('\'')){
-                    token = new CharToken(character);
-                }else{
-                    // [异常] 没有右侧单引号
-                    LEXICAL_ERROR("字符缺少右侧单引号.");
-                    token = new Token(ERR);
-                }
+            if(scanner.scan_and_move('\'')){
+                current_char = scanner.move();
+                token = new CharToken(character);
+            }else{
+                // [异常] 没有右侧单引号
+                LEXICAL_ERROR("字符缺少右侧单引号.");
+                token = new Token(ERR);
             }
         }
         // 数字
