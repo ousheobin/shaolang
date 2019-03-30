@@ -7,6 +7,7 @@
 #include "argument.h"
 
 #include "lexer.h"
+#include "parser.h"
 #include "scanner.h"
 #include "error.h"
 
@@ -17,6 +18,7 @@ private:
     vector<char *> files;
 
     Lexer * lexer;
+    Parser * parser;
     FileScanner * scanner;
 
 public:

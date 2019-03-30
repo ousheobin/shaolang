@@ -8,20 +8,22 @@
 Compiler::Compiler(Lexer *lexer_ptr, FileScanner *scanner_ptr) {
     this -> lexer = lexer_ptr;
     this -> scanner = scanner_ptr;
+    this -> parser = NULL;
 }
 
 void Compiler::compile() {
-    Token * token = NULL;
-    token = lexer->next_token();
-    do{
-        if(CompilerArguments::showLexicalResult){
-            cout<<token->to_string()<<endl;
-        }
-        token = lexer->next_token();
-    }while (token != NULL && token->type != LexicalType::END);
+    if(parser){
+        delete parser;
+    }
+    parser = new Parser(lexer);
+    parser -> do_anlayse();
+
 }
 
 Compiler::~Compiler() {
+    if(parser){
+        delete parser;
+    }
     if(lexer){
         delete lexer;
     }

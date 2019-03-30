@@ -34,4 +34,6 @@ add_executable(shaolang
         src/error.h
         src/compiler.cpp
         src/compiler.h
-        src/argument.cpp)
+        src/argument.cpp
+        src/parser.cpp
+        src/parser.h)
