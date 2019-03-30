@@ -53,10 +53,13 @@ enum syntaxError{
     R_PARENTHESE_LOST,R_PARENTHESE_ERROR,
     L_BRACKET_LOST,L_BRACKET_ERROR,
     R_BRACKET_LOST,R_BRACKET_ERROR,
+    L_BRACE_LOST,L_BRACE_ERROR,
+    R_BRACE_LOST,R_BRACE_ERROR,
     COMMA_LOST,COMMA_ERROR,
     SEMICOLON_LOST,SEMICOLON_ERROR,
     COLON_LOST,COLON_ERROR,
-    FOR_KW_LOST,FOR_KW_ERROR
+    KW_WHILE_LOST,KW_WHILE_ERROR,
+    VALUE_DEFINE_ERROR,CONSTRANT_DEFINE_ERROR
 };
 
 const string syntaxErrorHints[] ={
@@ -67,10 +70,13 @@ const string syntaxErrorHints[] ={
         "缺少')'符号","')'符号处于错误的位置",
         "缺少'['符号","'['符号处于错误的位置",
         "缺少']'符号","']'符号处于错误的位置",
+        "缺少'{'符号","'{'符号处于错误的位置",
+        "缺少'}'符号","'}'符号处于错误的位置",
         "缺少逗号","逗号位置错误",
         "缺少分号","分号位置异常",
         "缺少':'符号","':'符号位置不正确",
-        "缺少关键字for","关键字for异常"
+        "缺少while关键字","while关键字不正确",
+        "变量或函数定义不正确","常量定义不正确"
 };
 
 #endif //SHAOLANG_COMMON_H

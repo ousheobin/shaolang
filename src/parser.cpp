@@ -142,7 +142,7 @@ void Parser::value_definition() {
             recovery(IS(COMMA)OR(SEMICOLON)OR(ASSIGN),ID_LOST,ID_ERROR);
         }
     }else{
-        recovery(IS(L_BRACKET)OR(ASSIGN)OR(COMMA)OR(SEMICOLON),NONE,NONE);
+        recovery(IS(L_BRACKET)OR(ASSIGN)OR(COMMA)OR(SEMICOLON),VALUE_DEFINE_ERROR,VALUE_DEFINE_ERROR);
     }
 }
 
@@ -154,7 +154,7 @@ void Parser::val_or_arr_def() {
         if(IS(C_INTEGER)){
             move();
         }else{
-            recovery(IS(R_BRACKET),NONE,NONE);
+            recovery(IS(R_BRACKET),L_BRACKET_LOST,L_BRACKET_ERROR);
         }
         if(!check_and_move(R_BRACKET)){
             recovery(IS(COMMA)OR(SEMICOLON),R_BRACKET_LOST,R_BRACKET_ERROR);
@@ -175,7 +175,7 @@ void Parser::define_list() {
             recovery(1,COMMA_LOST,COMMA_ERROR);
             value_definition();
         }else{
-            recovery(ALL_TYPES||(IS(SUB)OR(R_BRACE))||ALL_STATEMENT_KW,NONE,NONE);
+            recovery(ALL_TYPES||(IS(SUB)OR(R_BRACE))||ALL_STATEMENT_KW,VALUE_DEFINE_ERROR,VALUE_DEFINE_ERROR);
         }
     }
 }
@@ -247,7 +247,7 @@ void Parser::para_data_extend() {
             move();
         }
         if(!check_and_move(R_BRACKET)){
-            recovery(IS(COMMA)OR(R_PARENTHESE),NONE,NONE);
+            recovery(IS(COMMA)OR(R_PARENTHESE),R_BRACKET_LOST,R_BRACKET_ERROR);
         }
     }
 }
@@ -296,11 +296,11 @@ void Parser::function_content() {
  */
 void Parser::block() {
     if(!check_and_move(L_BRACE)){
-        recovery(ALL_TYPES||ALL_STATEMENT_KW,NONE,NONE);
+        recovery(ALL_TYPES||ALL_STATEMENT_KW,L_BRACE_LOST,L_BRACE_ERROR);
     }
     sub_program();
     if(!check_and_move(R_BRACE)){
-        recovery(ALL_TYPES||IS(SUB)OR(END),NONE,NONE);
+        recovery(ALL_TYPES||IS(SUB)OR(END),R_BRACE_LOST,R_BRACE_ERROR);
     }
 }
 
@@ -390,7 +390,7 @@ void Parser::while_statement() {
         recovery(IS(L_PARENTHESE),NONE,NONE);
     }
     if(!check_and_move(L_PARENTHESE)){
-        recovery(ALL_RIGHT_OPERATORS,NONE,NONE);
+        recovery(ALL_RIGHT_OPERATORS,L_PARENTHESE_LOST,L_PARENTHESE_ERROR);
     }
     all_expr();
     if(!check_and_move(R_PARENTHESE)){
@@ -408,7 +408,7 @@ void Parser::do_while_statement() {
     }
     block();
     if(!check_and_move(K_WHILE)){
-        recovery(IS(L_PARENTHESE),NONE,NONE);
+        recovery(IS(L_PARENTHESE),KW_WHILE_LOST,KW_WHILE_ERROR);
     }
     if(!check_and_move(L_PARENTHESE)){
         recovery(IS(ALL_EXPR_KW),L_PARENTHESE_LOST,L_PARENTHESE_ERROR);
@@ -427,7 +427,7 @@ void Parser::do_while_statement() {
  */
 void Parser::for_statement() {
     if(!check_and_move(K_FOR)){
-        recovery(IS(L_PARENTHESE),FOR_KW_LOST,FOR_KW_ERROR);
+        recovery(IS(L_PARENTHESE),NONE,NONE);
     }
     if(!check_and_move(L_PARENTHESE)){
         recovery(ALL_TYPES||ALL_EXPR_KW||IS(SEMICOLON),L_PARENTHESE_LOST,L_PARENTHESE_ERROR);
@@ -521,13 +521,13 @@ void Parser::switch_statement() {
     }
 
     if(!check_and_move(L_BRACE)){
-        recovery(IS(L_BRACE),NONE,NONE);
+        recovery(IS(L_BRACE),L_BRACE_LOST,L_BRACKET_ERROR);
     }
 
     case_statemnet();
 
     if(!check_and_move(R_BRACE)){
-        recovery(IS(K_CASE)OR(K_DEFAULT),NONE,NONE);
+        recovery(IS(K_CASE)OR(K_DEFAULT),R_BRACE_LOST,R_BRACE_ERROR);
     }
 }
 
@@ -775,7 +775,7 @@ void Parser::constraint() {
     }else if(IS(C_FLOAT)){
         move();
     } else{
-        recovery(ALL_STATEMENT_KW,NONE,NONE);
+        recovery(ALL_STATEMENT_KW,CONSTRANT_DEFINE_ERROR,CONSTRANT_DEFINE_ERROR);
     }
 }
 
