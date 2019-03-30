@@ -37,7 +37,7 @@ Token * Lexer::next_token() {
             do{
                 keywor_or_id += current_char;
                 current_char = scanner.move();
-            }while (check_is_valid_char(current_char));
+            }while (check_is_valid_char(current_char)||check_is_number(current_char)||current_char=='_');
 
             if(keyWord.contains(keywor_or_id)){
                 token = new Token(keyWord.get_type(keywor_or_id));
