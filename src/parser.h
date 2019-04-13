@@ -3,6 +3,9 @@
 //
 
 #include "lexer.h"
+#include "symbols.h"
+#include "symbol_table.h"
+#include "ir_generator.h"
 
 #ifndef SHAOLANG_PARSER_H
 #define SHAOLANG_PARSER_H
@@ -10,12 +13,14 @@
 class Parser
 {
 public:
-    Parser(Lexer * lexer);
+    Parser(Lexer * lexer,SymbolTable * symTable,IRGenerator * irGen);
     void do_anlayse();
 
 private:
     Lexer * lexer;
     Token * current_token;
+    SymbolTable * symbolTable;
+    IRGenerator * irGenerator;
 
     void move(); // 移进 Move
     bool check_and_move(LexicalType type); //匹配与规约 Reduce
@@ -25,20 +30,19 @@ private:
     // Global Syntax
     void program();
     void segment();
-    void type();
+    LexicalType type();
     // Value Definition Syntax
-    void value_definition();
-    void val_or_arr_def();
-    void define_list();
-    void init();
+    Variable * value_definition(LexicalType type);
+    Variable * val_or_arr_def(LexicalType type,bool is_ptr,string var_name);
+    void define_list(LexicalType type);
+    Variable * init(LexicalType type,bool is_ptr,string var_name);
     // Function Definition Syntax
-    void function_extend();
-    void function_definiition();
-    void para_data();
-    void para_data_extend();
-    void para_list();
-    void parameter();
-    void function_content();
+    void function_definition(LexicalType type);
+    Variable * para_data(LexicalType type);
+    Variable * para_data_extend(string var_name,LexicalType type);
+    void para_list(vector<Variable*> & parameters);
+    void parameter(vector<Variable*> & parameters);
+    void function_content(Function * fun);
     // Sub-program Syntax
     void block();
     void sub_program();
@@ -55,36 +59,37 @@ private:
     void else_statement();
     void switch_statement();
     void case_statemnet();
-    void case_label();
+    Variable * case_label();
     // Expression Syntax
-    void all_expr();
-    void expr();
-    void assign_expr();
-    void assign_extend();
-    void or_expr();
-    void or_extend();
-    void and_expr();
-    void and_extend();
-    void compare_expr();
-    void compare_extend();
-    void compare_symbol();
-    void arithmetic_expr();
-    void arithmetic_extend();
-    void add_and_sub();
-    void item();
-    void item_extend();
-    void mul_div_mod();
-    void factor();
-    void other_operators();
-    void auto_inc_dec();
-    void auto_inc_dec_op();
-    void element();
-    void enumable_constraint();
-    void constraint();
-    void id_extend();
-    void init_fun_arg();
-    void arg_list();
-    void arg_expr();
+    Variable * all_expr();
+    Variable * expr();
+    Variable * assign_expr();
+    Variable * assign_extend(Variable * left_val);
+    Variable * or_expr();
+    Variable * or_extend(Variable * left_val);
+    Variable * and_expr();
+    Variable * and_extend(Variable * left_val);
+    Variable * compare_expr();
+    Variable * compare_extend(Variable * left_val);
+    LexicalType compare_symbol();
+    Variable * arithmetic_expr();
+    Variable * arithmetic_extend(Variable * left_val);
+    LexicalType add_and_sub();
+    Variable * item();
+    Variable * item_extend(Variable * left_val);
+    LexicalType mul_div_mod();
+    Variable * factor();
+    LexicalType other_operators();
+    Variable * auto_inc_dec();
+    LexicalType auto_inc_dec_op();
+    Variable * element();
+    Variable * enumable_constraint();
+    Variable * constraint();
+    Variable * id_extend(string var_name);
+    // Function Extend
+    void init_fun_arg(vector<Variable *> * args);
+    void arg_list(vector<Variable *> * args);
+    Variable * arg_expr();
 
 
 };

@@ -8,6 +8,9 @@
 
 #include "lexer.h"
 #include "parser.h"
+#include "symbol_table.h"
+#include "inter_code.h"
+#include "ir_generator.h"
 #include "scanner.h"
 #include "error.h"
 
@@ -20,6 +23,8 @@ private:
     Lexer * lexer;
     Parser * parser;
     FileScanner * scanner;
+    SymbolTable * symbolTable;
+    IRGenerator * irGenerator;
 
 public:
 

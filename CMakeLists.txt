@@ -36,4 +36,4 @@ add_executable(shaolang
         src/compiler.h
         src/argument.cpp
         src/parser.cpp
-        src/parser.h)
+        src/parser.h src/symbol_table.cpp src/symbol_table.h src/symbols.cpp src/symbols.h src/inter_code.cpp src/inter_code.h src/ir_generator.cpp src/ir_generator.h)
