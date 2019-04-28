@@ -61,15 +61,19 @@ Variable::Variable(vector<int> scope, LexicalType type, bool is_ptr) {
     set_type(type);
     set_is_pointer(is_ptr);
     set_scope_path(scope);
+    is_temp_store = true;
     is_left_value = false;
 }
 
 Variable::Variable(vector<int> scope, Variable *var) {
+    stringstream name;
+    name <<"<<temp_"<< (tempId ++ ) <<">>";
     init_var_obj();
     set_scope_path(scope);
     set_type(var->get_type());
     set_is_pointer(var->is_refference());
-    set_variable_name(var->get_variable_name()+"_temp");
+    set_variable_name(name.str());
+    is_temp_store = true;
     is_left_value = false;
 }
 
@@ -99,6 +103,7 @@ void Variable::init_var_obj() {
     ptr = NULL;
 
     frame_offsize = 0;
+    is_temp_store = false;
 }
 
 void Variable::set_variable_name(const string &variable_name) {
@@ -212,18 +217,20 @@ int Variable::get_size() {
 
 string Variable::get_value_display() {
     std::stringstream ss;
-    if(!is_array && !is_pointer){
-        if(type == TK_INT){
+    if(is_constraint && !is_refference()){
+        if(type == C_INTEGER){
             ss << integer_initial_value;
-        }else if(type == TK_VOID){
-            ss << "VOID";
-        }else if(type == TK_CHAR){
+        }else if(type == C_CHAR){
             ss << char_initial_value;
+        }else if(type == C_STRING){
+            ss << variable_name;
         }
     }else if(is_array){
-        ss << typeName[type] << "_" << "ARRAY" << endl;
-    }else if(is_pointer && ptr != this){
+        ss << typeName[type] << "_" << "ARRAY";
+    }else if(is_pointer && ptr != NULL && ptr != this ){
         ss << ptr -> get_value_display();
+    }else{
+        ss << variable_name;
     }
     return ss.str();
 }

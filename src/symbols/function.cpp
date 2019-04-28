@@ -81,9 +81,9 @@ void Function::print_code() {
     vector<IntermediateInstruct *> codes = interCodeCollection.get_codes();
     for(int i = 0 ; i < codes.size() ; i ++ ){
         IntermediateInstruct * ins = codes[i];
-        string leftName = (ins -> getLeftArg() != NULL)?ins -> getLeftArg()-> get_variable_name() : " ";
-        string rightName = (ins -> getRightArg() != NULL)?ins -> getRightArg()-> get_variable_name() : " ";
-        string resultName = (ins -> getResultVar() != NULL)?ins -> getResultVar()-> get_variable_name() : " ";
+        string leftName = (ins -> getLeftArg() != NULL)?ins -> getLeftArg()-> get_value_display() : " ";
+        string rightName = (ins -> getRightArg() != NULL)?ins -> getRightArg()-> get_value_display() : " ";
+        string resultName = (ins -> getResultVar() != NULL)?ins -> getResultVar()-> get_value_display() : " ";
         cout << "("<< interOpHints[ins->getInterCodeOperator()] << "," <<  leftName << ","
         << rightName << ","<<resultName<<")"<<endl;
     }

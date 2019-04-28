@@ -13,9 +13,12 @@
 class Variable{
 private:
     static int tempId;
+
     string variable_name;
     LexicalType type;
     std::vector<int> var_scope_path;
+
+    bool is_temp_store;
 
     bool is_constraint;
     bool is_pointer;
