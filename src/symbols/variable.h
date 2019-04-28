@@ -30,9 +30,9 @@ private:
     int integer_initial_value;
     char char_initial_value;
     string str_initial_value;
-    double double_initial_value;
     string ptr_initial_value;
     Variable * ptr;
+
     int size_of_variable;
     int frame_offsize;
 
@@ -46,35 +46,66 @@ private:
     void init_var_obj();
 
 public:
+
+    // DFG Opt Fields
+    int opt_index;
+    bool is_live;
+
+    // Reg assignment
+    int register_id;
+    bool in_main_memory;
+
     // Normal Var
-    Variable(string var_name,vector<int> scope,LexicalType type,bool is_ptr,Variable * init_value);
+    Variable(string var_name, vector<int> scope,LexicalType type,bool is_ptr,Variable * init_value);
     // Array
     Variable(string var_name, vector<int> scope,LexicalType type,int array_length);
     // Constraint
     Variable(Token * token);
     // Integer
     Variable(int val);
-    // Float
-    Variable(double val);
     // Temp Var
     Variable(vector<int> scope,LexicalType type,bool is_ptr);
     Variable(vector<int> scope,Variable * var);
     // Void
     Variable();
 
-    string get_variable_name();
-    LexicalType get_type();
+    // Scope Path
     vector<int> get_scope_path();
 
-    bool is_basic_type();
-    bool is_refference();
-    bool is_left_var();
-    void set_left_var(bool is_left);
+    // Type
+    LexicalType get_type();
+    bool is_char();
+    bool is_char_pointer();
+    bool is_ptr();
     bool is_arr();
+    bool is_void();
+    bool is_refference();
+    bool is_basic_type();
+    bool is_literal_value();
 
-    Variable * get_ptr();
-    void set_ptr(Variable * var);
+    // Common
+    string get_variable_name();
+    string get_ptr_variable_name();
+    string get_raw_string_value();
+    string get_string_value();
+
+    // Pointer
+    Variable * get_pointer();
+    void set_pointer(Variable * ptr);
+
+    void set_is_left(bool is_left);
+    bool is_left_var();
+    void set_frame_offset(int offset);
+    int get_frame_offset(int offset);
+    int get_size();
+
+    // To String
     string get_value_display();
+
+    // DFG
+    bool is_not_init();
+    bool not_a_const();
+    int get_const_val();
 
 };
 #endif //SHAOLANG_VARIABLE_H

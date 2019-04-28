@@ -29,13 +29,6 @@ public:
     virtual string to_string();
 };
 
-class FloatToken:public Token{
-public:
-    double value;
-    FloatToken(double value);
-    virtual string to_string();
-};
-
 class CharToken:public Token{
 public:
     char value;

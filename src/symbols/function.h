@@ -23,7 +23,6 @@ protected:
     int current_esp_ptr;
 
     vector<int> scope_esp;
-    string get_value_display();
     InterCodeCollection interCodeCollection;
 
 public:

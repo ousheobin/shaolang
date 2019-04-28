@@ -34,16 +34,6 @@ string IntegerToken::to_string() {
     return "["+typeName[type]+"]:"+stream.str();
 }
 
-FloatToken::FloatToken(double value):Token(C_FLOAT){
-    this -> value = value;
-}
-
-string FloatToken::to_string() {
-    std::stringstream stream;
-    stream<<value;
-    return "["+typeName[type]+"]:"+stream.str();
-}
-
 CharToken::CharToken(char value):Token(C_CHAR) {
     this -> value = value;
 }

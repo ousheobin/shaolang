@@ -137,34 +137,7 @@ Token * Lexer::next_token() {
                 current_char = scanner.move();
             } while (check_is_number(current_char));
 
-            if(current_char == '.'){
-                // 浮点数
-                double base = 0.1;
-                double float_value = 0;
-                current_char = scanner.move();
-                do{
-                    float_value = float_value + (current_char - '0') * base;
-                    base /= 10;
-                    current_char = scanner.move();
-                } while (check_is_number(current_char));
-
-                if(current_char == '.'){
-                    // [异常] 重复的小数点
-                    LEXICAL_ERROR("出现重复的小数点，请检查浮点数是否合法.");
-                    do{
-                        current_char = scanner.move();
-                    } while (check_is_number(current_char)||check_is_valid_char(current_char)||current_char == '.');
-                    token = new Token(LexicalType::ERR);
-                }else if(check_is_valid_char(current_char) || current_char == '_'){
-                    LEXICAL_ERROR("浮点数的数字部分不允许出现字符.");
-                    do{
-                        current_char = scanner.move();
-                    } while (check_is_number(current_char)||check_is_valid_char(current_char)||current_char == '.');
-                    token = new Token(LexicalType::ERR);
-                }else{
-                    token = new FloatToken(value+float_value);
-                }
-            } else if( current_char == ' '  || current_char == '\t' ||
+            if( current_char == ' '  || current_char == '\t' ||
                      current_char == '\n' || current_char == '\r' ){
                 token = new IntegerToken(value);
             }else if(check_is_valid_char(current_char) || current_char == '_'){

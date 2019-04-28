@@ -162,8 +162,6 @@ Variable* IRGenerator::get_offset_step(Variable *var) {
         return SymbolTable::oneVariable;
     }else if(var->get_type()==TK_INT){
         return SymbolTable::fourVariable;
-    }else if(var->get_type()==TK_DOUBLE){
-        return SymbolTable::eightVariable;
     }
     return NULL;
 }
@@ -181,7 +179,7 @@ Variable *IRGenerator::generate_assign(Variable *left, Variable *right) {
     if(right->is_refference()){
         if(!left ->is_refference()){
             // left = right -> ptr
-            symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_PTR_GET,left,right->get_ptr()));
+            symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_PTR_GET,left,right->get_pointer()));
             return left;
         }else{
             // left -> ptr = right -> ptr;
@@ -190,7 +188,7 @@ Variable *IRGenerator::generate_assign(Variable *left, Variable *right) {
     }
     if(left->is_refference()){
         // left -> ptr = right
-        symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_PTR_SET,right,left->get_ptr()));
+        symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_PTR_SET,right,left->get_pointer()));
     }else{
         // left = right
         symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_ASSIGN,left,right));
@@ -203,7 +201,7 @@ Variable* IRGenerator::generate_assign_ptr(Variable * var) {
     symbolTable -> add_variable(newVar);
     if(var -> is_refference()){
         // newVar = var -> ptr
-        symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_PTR_GET,newVar,var->get_ptr()));
+        symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_PTR_GET,newVar,var->get_pointer()));
     }else{
         // newVar = var
         symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_ASSIGN,newVar,var));
@@ -276,7 +274,7 @@ Variable *IRGenerator::generate_add(Variable *left, Variable *right) {
         tmpStore = new Variable(symbolTable->get_current_scope_path(), right);
         left = generate_mul(left,get_offset_step(right));
     }else if( left -> is_basic_type()&& right -> is_basic_type()){
-        LexicalType type = (left->get_type()==TK_DOUBLE ||right->get_type()==TK_DOUBLE) ? TK_DOUBLE : TK_INT;
+        LexicalType type = TK_INT;
         tmpStore = new Variable(symbolTable->get_current_scope_path(), type ,false);
     }else{
         SE_ERROR(semanticErrorHints[EXPR_NOT_BASIC_TYPE]);
@@ -306,9 +304,6 @@ Variable *IRGenerator::generate_sub(Variable *left, Variable *right) {
 
 Variable *IRGenerator::generate_mul(Variable *left, Variable *right) {
     LexicalType tgrType = TK_INT;
-    if(left->get_type() == TK_DOUBLE || right -> get_type() == TK_DOUBLE){
-        tgrType = TK_DOUBLE;
-    }
     Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),tgrType, false);
     symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_MUL,tmpStore,left,right));
     return tmpStore;
@@ -316,9 +311,6 @@ Variable *IRGenerator::generate_mul(Variable *left, Variable *right) {
 
 Variable *IRGenerator::generate_div(Variable *left, Variable *right) {
     LexicalType tgrType = TK_INT;
-    if(left->get_type() == TK_DOUBLE || right -> get_type() == TK_DOUBLE){
-        tgrType = TK_DOUBLE;
-    }
     Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),tgrType, false);
     symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_DIV,tmpStore,left,right));
     return tmpStore;
@@ -326,9 +318,6 @@ Variable *IRGenerator::generate_div(Variable *left, Variable *right) {
 
 Variable *IRGenerator::generate_mod(Variable *left, Variable *right) {
     LexicalType tgrType = TK_INT;
-    if(left->get_type() == TK_DOUBLE || right -> get_type() == TK_DOUBLE){
-        tgrType = TK_DOUBLE;
-    }
     Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),tgrType, false);
     symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_MOD,tmpStore,left,right));
     return tmpStore;
@@ -348,7 +337,7 @@ Variable *IRGenerator::generate_lea(Variable *var) {
     }
     if(var -> is_refference()){
         // & (val -> ptr)
-        return var -> get_ptr();
+        return var -> get_pointer();
     }else{
         // &
         Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),var->get_type(),true);
@@ -376,8 +365,8 @@ Variable *IRGenerator::generate_ptr(Variable *var) {
         return var;
     }
     Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),var->get_type(),false);
-    tmpStore -> set_left_var(true);
-    tmpStore -> set_ptr(var);
+    tmpStore -> set_is_left(true);
+    tmpStore -> set_pointer(var);
     symbolTable -> add_variable(tmpStore);
     return tmpStore;
 }

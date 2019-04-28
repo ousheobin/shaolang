@@ -5,7 +5,6 @@
 #include "keyword.h"
 
 KeyWord::KeyWord() {
-    hashMap["double"] = TK_DOUBLE;
     hashMap["int"] = TK_INT;
     hashMap["char"] = TK_CHAR;
     hashMap["void"] = TK_VOID;

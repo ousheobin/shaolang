@@ -14,11 +14,11 @@
 #define IS(C) (current_token->type == C)
 #define OR(C) || (current_token->type == C)
 
-#define ALL_TYPES IS(TK_INT)OR(TK_CHAR)OR(TK_DOUBLE)OR(TK_VOID)
+#define ALL_TYPES IS(TK_INT)OR(TK_CHAR)OR(TK_VOID)
 #define ALL_COMPARE_SYMBOL IS(GT)OR(GE)OR(LT)OR(LE)OR(EQ)OR(NEQ)
 #define ALL_RIGHT_OPERATORS (ALL_COMPARE_SYMBOL)OR(OR)OR(AND)OR(ADD)OR(SUB)OR(MUL)OR(DIV)OR(MOD)
 #define ALL_LEFT_OPERATORS (ALL_RIGHT_OPERATORS)OR(INC)OR(DEC)
-#define ALL_EXPR_KW IS(L_PARENTHESE)OR(C_INTEGER)OR(C_FLOAT)OR(C_CHAR)OR(C_STRING)OR(ID)OR(NOT)OR(SUB)OR(LEA)OR(MUL)OR(INC)OR(DEC)
+#define ALL_EXPR_KW IS(L_PARENTHESE)OR(C_INTEGER)OR(C_CHAR)OR(C_STRING)OR(ID)OR(NOT)OR(SUB)OR(LEA)OR(MUL)OR(INC)OR(DEC)
 #define ALL_STATEMENT_KW (ALL_EXPR_KW)OR(SEMICOLON)OR(K_WHILE)OR(K_FOR)OR(K_DO)OR(K_IF)OR(K_SWITCH)OR(K_BREAK)OR(K_CONTINUE)OR(K_RETURN)
 
 Parser::Parser(Lexer * lex, SymbolTable * symTable,IRGenerator * irGen){
@@ -113,7 +113,7 @@ void Parser::segment() {
 }
 
 /**
- * <TYPE>->KW_INT | KW_FLOAT | KW_VOID | KW_CHAR
+ * <TYPE>->KW_INT | KW_VOID | KW_CHAR
  */
 LexicalType Parser::type() {
 
@@ -866,11 +866,7 @@ Variable * Parser::constraint() {
     Variable * variable = NULL;
     if(IS(C_INTEGER)OR(C_CHAR)OR(C_STRING)){
         variable = enumable_constraint();
-    }else if(IS(C_FLOAT)){
-        Variable * variable = new Variable(current_token);
-        symbolTable -> add_variable(variable);
-        move();
-    } else{
+    }else{
         recovery(ALL_STATEMENT_KW,CONSTRANT_DEFINE_ERROR,CONSTRANT_DEFINE_ERROR);
     }
     return variable;

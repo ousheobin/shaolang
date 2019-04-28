@@ -8,6 +8,46 @@
 #include "function.h"
 #include "variable.h"
 
+Function::Function(LexicalType lexicalType, string func_name, vector<Variable *> parameter_list) {
+    type= lexicalType;
+    function_name = func_name;
+    parameters = parameter_list;
+    has_declare = false;
+}
+
+string Function::get_function_name() {
+    return function_name;
+}
+
+bool Function::equals(Function *other_fun) {
+    if(other_fun == nullptr){
+        return false;
+    }
+    string otherName = other_fun -> get_function_name();
+    if(otherName != function_name){
+        return false;
+    }
+    return equals(other_fun->get_parameters());
+}
+
+bool Function::equals(vector<Variable *> source_para) {
+    if(source_para.size()!=parameters.size()){
+        return false;
+    }
+    unsigned long size = parameters.size();
+    for (int i = 0; i < size; ++i) {
+        if(source_para[i]->get_type() !=  parameters[i]->get_type()){
+            return false;
+        }
+    }
+    return true;
+}
+
+vector<Variable*> Function::get_parameters() {
+    return parameters;
+}
+
+
 void Function::enable_declare_flag() {
     has_declare = true;
 }
