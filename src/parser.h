@@ -27,40 +27,37 @@ private:
     void recovery(bool in_follow_set,syntaxError symbol_lost,syntaxError symbol_error);
     void recovery(bool in_follow_set,syntaxError symbol_lost,syntaxError symbol_error,bool delete_all); //错误恢复
 
-    // Global Syntax
+    // Global Grammar
     void program();
     void segment();
     LexicalType type();
-    // Value Definition Syntax
+
+    // Variables Grammar
     Variable * value_definition(LexicalType type);
-    Variable * val_or_arr_def(LexicalType type,bool is_ptr,string var_name);
     void define_list(LexicalType type);
-    Variable * init(LexicalType type,bool is_ptr,string var_name);
-    // Function Definition Syntax
+    Variable * init(LexicalType type,string var_name);
+
+    // Function Grammar
     void function_definition(LexicalType type);
-    Variable * para_data(LexicalType type);
-    Variable * para_data_extend(string var_name,LexicalType type);
-    void para_list(vector<Variable*> & parameters);
     void parameter(vector<Variable*> & parameters);
+    void para_list(vector<Variable*> & parameters);
+    Variable * para_data();
     void function_content(Function * fun);
-    // Sub-program Syntax
+
+    // Sub-program Grammar
     void block();
     void sub_program();
-    // Local Variable Syntax
+
+    // Local Variable Grammar
     void local_var_def();
-    // Control Statement Syntax
+
+    // Control Statement Grammar
     void statement();
     void while_statement();
-    void do_while_statement();
-    void for_statement();
-    void for_initial();
     void if_statement();
-    void if_extend();
     void else_statement();
-    void switch_statement();
-    void case_statemnet();
-    Variable * case_label();
-    // Expression Syntax
+
+    // Expression Grammar
     Variable * all_expr();
     Variable * expr();
     Variable * assign_expr();
@@ -83,14 +80,14 @@ private:
     Variable * auto_inc_dec();
     LexicalType auto_inc_dec_op();
     Variable * element();
-    Variable * enumable_constraint();
     Variable * constraint();
     Variable * id_extend(string var_name);
-    // Function Extend
+    Variable * id_assgin(string var_name);
+
+    // Function Argument Grammar
     void init_fun_arg(vector<Variable *> * args);
     void arg_list(vector<Variable *> * args);
     Variable * arg_expr();
-
 
 };
 

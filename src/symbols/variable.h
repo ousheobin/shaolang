@@ -44,7 +44,6 @@ private:
     void set_is_pointer(bool is_pointer);
     void set_array_length(int array_length);
     void set_scope_path(vector<int> scope_path);
-    void set_init_value(Variable * val);
 
     void init_var_obj();
 
@@ -59,9 +58,7 @@ public:
     bool in_main_memory;
 
     // Normal Var
-    Variable(string var_name, vector<int> scope,LexicalType type,bool is_ptr,Variable * init_value);
-    // Array
-    Variable(string var_name, vector<int> scope,LexicalType type,int array_length);
+    Variable(string var_name, vector<int> scope,LexicalType type,Variable * init_value);
     // Constraint
     Variable(Token * token);
     // Integer
@@ -98,6 +95,7 @@ public:
 
     void set_is_left(bool is_left);
     bool is_left_var();
+    void set_init_value(Variable * val);
     void set_frame_offset(int offset);
     int get_frame_offset(int offset);
     int get_size();

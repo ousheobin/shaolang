@@ -9,21 +9,12 @@
 
 int Variable::tempId = 0;
 
-Variable::Variable(string var_name, vector<int> scope, LexicalType type, bool is_ptr, Variable *init) {
+Variable::Variable(string var_name, vector<int> scope, LexicalType type, Variable *init) {
     init_var_obj();
     set_variable_name(var_name);
     set_scope_path(scope);
     set_type(type);
-    set_is_pointer(is_ptr);
     set_init_value(init);
-}
-
-Variable::Variable(string var_name, vector<int> scope, LexicalType type, int array_length) {
-    init_var_obj();
-    set_variable_name(var_name);
-    set_scope_path(scope);
-    set_type(type);
-    set_array_length(array_length);
 }
 
 Variable::Variable(Token *token) {
