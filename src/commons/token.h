@@ -5,7 +5,7 @@
 #ifndef SHAOLANG_TOKEN_H
 #define SHAOLANG_TOKEN_H
 
-#include "common.h"
+#include "commons/common.h"
 
 class Token{
 public:

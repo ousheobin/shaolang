@@ -20,20 +20,33 @@ include_directories(src)
 add_executable(shaolang
         src/shaolang.cpp
         src/shaolang.h
-        src/argument.h
+        src/commons/argument.h
         src/lexer.cpp
         src/lexer.h
-        src/scanner.h
-        src/scanner.cpp
-        src/common.h
-        src/token.h
-        src/token.cpp
-        src/keyword.h
-        src/keyword.cpp
-        src/error.cpp
-        src/error.h
+        src/commons/scanner.h
+        src/commons/scanner.cpp
+        src/commons/common.h
+        src/commons/token.h
+        src/commons/token.cpp
+        src/commons/keyword.h
+        src/commons/keyword.cpp
+        src/commons/error.cpp
+        src/commons/error.h
         src/compiler.cpp
         src/compiler.h
-        src/argument.cpp
+        src/commons/argument.cpp
         src/parser.cpp
-        src/parser.h src/symbol_table.cpp src/symbol_table.h src/symbols.cpp src/symbols.h src/inter_code.cpp src/inter_code.h src/ir_generator.cpp src/ir_generator.h)
+        src/parser.h
+        src/symbols/symbol_table.cpp
+        src/symbols/symbol_table.h
+        src/symbols/function.cpp
+        src/symbols/function.h
+        src/symbols/variable.cpp
+        src/symbols/variable.h
+        src/ir/inter_code.cpp
+        src/ir/inter_code.h
+        src/ir/inter_code_collection.cpp
+        src/ir/inter_code_collection.h
+        src/ir_generator.cpp
+        src/ir_generator.h
+        )

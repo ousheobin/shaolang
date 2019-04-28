@@ -6,8 +6,8 @@
 #include <vector>
 #include <cstring>
 #include "compiler.h"
-#include "argument.h"
-#include "error.h"
+#include "commons/argument.h"
+#include "commons/error.h"
 #include "shaolang.h"
 
 using namespace std;

@@ -96,11 +96,3 @@ Function *IntermediateInstruct::getFunction() const {
 Variable *IntermediateInstruct::getRightArg() const {
     return rightArg;
 }
-
-void InterCodeCollection::add_code(IntermediateInstruct *instruct) {
-    codes.push_back(instruct);
-}
-
-vector<IntermediateInstruct*> InterCodeCollection::get_codes() {
-    return codes;
-}

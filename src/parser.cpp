@@ -2,10 +2,10 @@
 // Created by Ou Sheobin on 2019/2/28.
 //
 
-#include "argument.h"
+#include "commons/argument.h"
 
 #include "parser.h"
-#include "error.h"
+#include "commons/error.h"
 
 #include <sstream>
 
@@ -644,7 +644,7 @@ Variable * Parser::assign_extend(Variable * left_val) {
     if(check_and_move(ASSIGN)){
         Variable * rightVar = assign_expr();
         Variable * result = irGenerator -> generate_two_value_op(left_val,ASSIGN,rightVar);
-        assign_extend(result);
+        return assign_extend(result);
     }
     return left_val;
 }
@@ -765,7 +765,7 @@ Variable * Parser::item_extend(Variable * left_val) {
         LexicalType op = mul_div_mod();
         Variable * rightVar = factor();
         Variable * result = irGenerator -> generate_two_value_op(left_val,op,rightVar);
-        item_extend(result);
+        return item_extend(result);
     }
     return left_val;
 }

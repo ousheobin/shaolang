@@ -5,8 +5,8 @@
 #ifndef SHAOLANG_IR_GENERATOR_H
 #define SHAOLANG_IR_GENERATOR_H
 
-#include "symbol_table.h"
-#include "common.h"
+#include "symbols/symbol_table.h"
+#include "commons/common.h"
 
 class IRGenerator{
 

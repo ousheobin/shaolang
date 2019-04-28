@@ -6,7 +6,7 @@
 #include <sstream>
 
 #include "lexer.h"
-#include "error.h"
+#include "commons/error.h"
 
 #define LEXICAL_ERROR(err_msg) Error::showMessage(ErrorType::Error,err_msg);
 

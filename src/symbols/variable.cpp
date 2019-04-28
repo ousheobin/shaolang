@@ -1,11 +1,11 @@
 //
-// Created by Ou Sheobin on 2019/3/31.
+// Created by Ou Sheobin on 2019/4/28.
 //
 
-#include <iostream>
-#include <sstream>
+#include "variable.h"
+#include "function.h"
 
-#include "symbols.h"
+#include <sstream>
 
 int Variable::tempId = 0;
 
@@ -52,13 +52,13 @@ void Variable::init_var_obj() {
     frame_offsize = 0;
 }
 
-Variable::Variable(string var_name, vector<int> scope, LexicalType type, bool is_ptr, Variable *init_value) {
+Variable::Variable(string var_name, vector<int> scope, LexicalType type, bool is_ptr, Variable *init) {
     init_var_obj();
     set_variable_name(var_name);
     set_scope_path(scope);
     set_type(type);
     set_is_pointer(is_ptr);
-    set_init_value(initial_value);
+    set_init_value(init);
 }
 
 Variable::Variable(string var_name, vector<int> scope, LexicalType type, int array_length) {
@@ -235,45 +235,4 @@ string Variable::get_value_display() {
         ss << ptr -> get_value_display();
     }
     return ss.str();
-}
-
-void Function::enable_declare_flag() {
-    has_declare = true;
-}
-
-void Function::disable_declare_flag() {
-    has_declare = false;
-}
-
-bool Function::is_declare() {
-    return has_declare;
-}
-
-LexicalType Function::get_type() {
-    return type;
-}
-
-void Function::enter_esp_scope() {
-    scope_esp.push_back(0);
-}
-
-void Function::exit_esp_scope() {
-    scope_esp.pop_back();
-}
-
-void Function::add_instruct(IntermediateInstruct *instruct) {
-    interCodeCollection.add_code(instruct);
-}
-
-void Function::print_code() {
-    std::cout << "function - "<<function_name << std::endl;
-    vector<IntermediateInstruct *> codes = interCodeCollection.get_codes();
-    for(int i = 0 ; i < codes.size() ; i ++ ){
-        IntermediateInstruct * ins = codes[i];
-        string leftName = (ins -> getLeftArg() != NULL)?ins -> getLeftArg()-> get_variable_name() : " ";
-        string rightName = (ins -> getRightArg() != NULL)?ins -> getRightArg()-> get_variable_name() : " ";
-        string resultName = (ins -> getResultVar() != NULL)?ins -> getResultVar()-> get_variable_name() : " ";
-        cout << "("<< interOpHints[ins->getInterCodeOperator()] << "," <<  leftName << ","
-        << rightName << ","<<resultName<<")"<<endl;
-    }
 }

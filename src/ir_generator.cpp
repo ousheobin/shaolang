@@ -84,11 +84,11 @@ Variable *IRGenerator::generate_array(Variable *arrayDefine, Variable *index) {
     if(arrayDefine == NULL ||index == NULL){
         return NULL;
     }
-    if(arrayDefine -> get_type() == TK_VOID || index -> get_type()){
+    if(arrayDefine -> get_type() == TK_VOID || !index -> get_type()){
         SE_ERROR(semanticErrorHints[EXPR_RETURN_VOID]);
         return NULL;
     }
-    if(arrayDefine -> is_basic_type()){
+    if(!arrayDefine -> is_basic_type()){
         SE_ERROR(semanticErrorHints[CAN_NOT_APPLY_ARRAY_INDEX]);
         return NULL;
     }
@@ -96,7 +96,7 @@ Variable *IRGenerator::generate_array(Variable *arrayDefine, Variable *index) {
     return generate_ptr(generate_add(arrayDefine,index));
 }
 
-Variable *IRGenerator::generate_one_value_op(Variable *left, LexicalType type, Variable *right) {
+Variable * IRGenerator::generate_one_value_op(Variable *left, LexicalType type, Variable *right) {
     if((left != NULL && right != NULL) || (left==NULL && right == NULL)){
         return NULL;
     }
@@ -116,7 +116,7 @@ Variable *IRGenerator::generate_one_value_op(Variable *left, LexicalType type, V
         }
 
         if (left->is_refference()) {
-            left = generate_ptr(left);
+            left = generate_assign_ptr(left);
         }
         if (type == NOT) {
             return generate_not(left);
@@ -337,7 +337,7 @@ Variable *IRGenerator::generate_mod(Variable *left, Variable *right) {
 Variable *IRGenerator::generate_not(Variable *var) {
     Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),TK_INT, false);
     symbolTable -> add_variable(tmpStore);
-    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_NOT,var));
+    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_NOT,tmpStore,var));
     return tmpStore;
 }
 
@@ -411,15 +411,13 @@ Variable *IRGenerator::generate_inc_first(Variable *var) {
 }
 
 Variable *IRGenerator::generate_dec_last(Variable *var) {
-    Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),var);
-    tmpStore = generate_assign(tmpStore,var);
-    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_ADD,var,var,get_offset_step(var)));
+    Variable * tmpStore = generate_assign_ptr(var);
+    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_SUB,var,var,get_offset_step(var)));
     return tmpStore;
 }
 
 Variable *IRGenerator::generate_inc_last(Variable *var) {
-    Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),var);
-    tmpStore = generate_assign(tmpStore,var);
-    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_SUB,var,var,get_offset_step(var)));
+    Variable * tmpStore = generate_assign_ptr(var);
+    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_ADD,var,var,get_offset_step(var)));
     return tmpStore;
 }

@@ -2,7 +2,7 @@
 // Created by Ou Sheobin on 2018/12/28.
 //
 
-#include <token.h>
+#include <commons/token.h>
 #include <sstream>
 
 Token::Token(LexicalType t):type(t) {

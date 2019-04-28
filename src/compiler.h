@@ -4,15 +4,15 @@
 #ifndef SHAOLANG_COMPILER_H
 #define SHAOLANG_COMPILER_H
 
-#include "argument.h"
+#include "commons/argument.h"
 
 #include "lexer.h"
 #include "parser.h"
-#include "symbol_table.h"
-#include "inter_code.h"
+#include "symbols/symbol_table.h"
+#include "ir/inter_code.h"
 #include "ir_generator.h"
-#include "scanner.h"
-#include "error.h"
+#include "commons/scanner.h"
+#include "commons/error.h"
 
 class Compiler {
 

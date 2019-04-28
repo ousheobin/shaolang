@@ -7,7 +7,7 @@
 #define SHAOLANG_INTER_CODE_H
 
 #include <vector>
-#include "common.h"
+#include "commons/common.h"
 
 class Variable;
 class Function;
@@ -59,16 +59,6 @@ public:
 
     Variable *getRightArg() const;
 
-
-};
-
-class InterCodeCollection{
-
-    vector<IntermediateInstruct*> codes;
-
-public:
-    void add_code(IntermediateInstruct * instruct);
-    vector<IntermediateInstruct*> get_codes();
 
 };
 

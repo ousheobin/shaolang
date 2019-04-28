@@ -15,10 +15,11 @@ using namespace stdext;
 #include <unordered_map>
 #endif
 
-#include "error.h"
-#include "common.h"
-#include "symbols.h"
-#include "inter_code.h"
+#include "commons/error.h"
+#include "commons/common.h"
+#include "variable.h"
+#include "function.h"
+#include "ir/inter_code.h"
 
 #define SE_ERROR(err_msg) Error::showMessage(ErrorType::Error,err_msg);
 #define SE_WARNING(err_msg) Error::showMessage(ErrorType::Warning,err_msg);

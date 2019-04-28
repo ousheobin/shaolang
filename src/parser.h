@@ -3,8 +3,8 @@
 //
 
 #include "lexer.h"
-#include "symbols.h"
-#include "symbol_table.h"
+#include "symbols/function.h"
+#include "symbols/symbol_table.h"
 #include "ir_generator.h"
 
 #ifndef SHAOLANG_PARSER_H
