@@ -11,6 +11,7 @@ Compiler::Compiler(Lexer *lexer_ptr, FileScanner *scanner_ptr) {
     this -> parser = NULL;
     this -> symbolTable = new SymbolTable();
     this -> irGenerator = new IRGenerator(symbolTable);
+    this -> symbolTable -> set_ir_generator(irGenerator);
 }
 
 void Compiler::compile() {

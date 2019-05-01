@@ -14,16 +14,16 @@ enum LexicalType {
     ID,
     C_INTEGER, C_CHAR, C_STRING,
     TK_CHAR, TK_INT, TK_VOID,
-    K_IF, K_ELSE,
-    K_SWITCH, K_CASE, K_DEFAULT, K_BREAK,
-    K_FOR, K_WHILE, K_DO, K_CONTINUE,
-    K_RETURN,
+    K_IF, K_ELSE, K_WHILE,
+    K_BREAK, K_CONTINUE, K_RETURN,
+    K_INPUT,K_OUTPUT,
     ADD, SUB, MUL, DIV, MOD,
     INC, DEC,
     NOT, AND, OR,
     GT, GE, LT, LE, EQ, NEQ,
     LEA, ASSIGN,
     COMMA, COLON, SEMICOLON,
+    LEFT_STREAM,RIGHT_STREAM,
     L_PARENTHESE, R_PARENTHESE, L_BRACKET, R_BRACKET, L_BRACE, R_BRACE
 };
 
@@ -32,16 +32,16 @@ const string typeName[] = {
         "标识符",
         "整形类型", "字符类型", "字符串类型",
         "char", "int" ,"void",
-        "if","else",
-        "switch", "case" ,"default" ,"break",
-        "for", "wihile" ,"do" ,"continue",
-        "return",
+        "if","else", "while",
+        "break", "continue", "return",
+        "input","output",
         "+" ,"-", "*" ,"/", "%",
         "++","--",
         "!" ,"&&" ,"||",
         ">",">=","<","<=","==","!=",
         "&","=",
         ",", ":",";",
+        "<<",">>",
         "(",")","[","]","{","}"
 };
 
@@ -156,5 +156,10 @@ const string interOpHints[] = {
         "ARG",
         "PROC", "CALL", "RETURN", "RETURN_WITH_VAL"
 };
+
+class Variable;
+class Function;
+class SymbolTable;
+class IRGenerator;
 
 #endif //SHAOLANG_COMMON_H

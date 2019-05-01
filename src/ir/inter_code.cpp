@@ -3,7 +3,10 @@
 //
 
 #include "inter_code.h"
+#include <sstream>
 #include <iostream>
+
+int IntermediateInstruct::id = 0;
 
 IntermediateInstruct::IntermediateInstruct(InterCodeOperator op, Variable *result, Variable *left, Variable *right) {
     init();
@@ -37,6 +40,7 @@ IntermediateInstruct::IntermediateInstruct(InterCodeOperator op, IntermediateIns
 
 IntermediateInstruct::IntermediateInstruct() {
     init();
+    label = generate_label();
 }
 
 void IntermediateInstruct::init() {
@@ -95,4 +99,11 @@ Function *IntermediateInstruct::getFunction() const {
 
 Variable *IntermediateInstruct::getRightArg() const {
     return rightArg;
+}
+
+string IntermediateInstruct::generate_label() {
+    string lb=".L";
+    stringstream ss;
+    ss<<lb<<(id ++);
+    return ss.str();
 }

@@ -3,9 +3,20 @@
 //
 
 #include "ir_generator.h"
+#include "commons/type_util.h"
 
 IRGenerator::IRGenerator(SymbolTable *symbolTab) {
      this -> symbolTable = symbolTab;
+}
+
+void IRGenerator::push(IntermediateInstruct * head, IntermediateInstruct *tail) {
+    head_link.push_back(head);
+    tail_link.push_back(tail);
+}
+
+void IRGenerator::pop() {
+    head_link.pop_back();
+    tail_link.pop_back();
 }
 
 Variable * IRGenerator::generate_two_value_op(Variable *left, LexicalType op, Variable *right) {
@@ -80,22 +91,6 @@ void IRGenerator::generate_function_param(Variable *var) {
     symbolTable -> add_inter_instruct(inst);
 }
 
-Variable *IRGenerator::generate_array(Variable *arrayDefine, Variable *index) {
-    if(arrayDefine == NULL ||index == NULL){
-        return NULL;
-    }
-    if(arrayDefine -> get_type() == TK_VOID || !index -> get_type()){
-        SE_ERROR(semanticErrorHints[EXPR_RETURN_VOID]);
-        return NULL;
-    }
-    if(!arrayDefine -> is_basic_type()){
-        SE_ERROR(semanticErrorHints[CAN_NOT_APPLY_ARRAY_INDEX]);
-        return NULL;
-    }
-
-    return generate_ptr(generate_add(arrayDefine,index));
-}
-
 Variable * IRGenerator::generate_one_value_op(Variable *left, LexicalType type, Variable *right) {
     if((left != NULL && right != NULL) || (left==NULL && right == NULL)){
         return NULL;
@@ -105,11 +100,7 @@ Variable * IRGenerator::generate_one_value_op(Variable *left, LexicalType type, 
             SE_ERROR(semanticErrorHints[VARIABLE_CAN_NOT_BE_VOID]);
             return NULL;
         }
-        if (type == LEA) {
-            return generate_lea(left);
-        } else if (type == MUL) {
-            return generate_ptr(left);
-        } else if (type == INC) {
+        if (type == INC) {
             return generate_inc_first(left);
         } else if (type == DEC) {
             return generate_dec_first(left);
@@ -142,37 +133,13 @@ Variable * IRGenerator::generate_one_value_op(Variable *left, LexicalType type, 
     }
 }
 
-bool IRGenerator::type_check(Variable *left, Variable *right) {
-    if(left==NULL||right==NULL){
-        return false;
-    }
-    if(left->is_basic_type() && right -> is_basic_type()){
-        return true;
-    }else if(!left->is_basic_type() && !right -> is_basic_type()){
-        return left->get_type() == right->get_type();
-    }else{
-        return false;
-    }
-}
-
-Variable* IRGenerator::get_offset_step(Variable *var) {
-    if(var->is_basic_type()){
-        return SymbolTable::oneVariable;
-    }else if(var->get_type()==TK_CHAR){
-        return SymbolTable::oneVariable;
-    }else if(var->get_type()==TK_INT){
-        return SymbolTable::fourVariable;
-    }
-    return NULL;
-}
-
 
 Variable *IRGenerator::generate_assign(Variable *left, Variable *right) {
     if(!left->is_left_var()){
         SE_ERROR(semanticErrorHints[INVAILD_LEFT_EXPR]);
         return right;
     }
-    if(!type_check(left,right)){
+    if(!TypeUtil::type_check(left,right)){
         SE_ERROR(semanticErrorHints[ASSIGN_TYPE_NOT_MATCH]);
         return right;
     }
@@ -269,10 +236,10 @@ Variable *IRGenerator::generate_add(Variable *left, Variable *right) {
     Variable * tmpStore = NULL;
     if((left->is_refference() || left -> is_arr()) && right -> is_basic_type()){
         tmpStore = new Variable(symbolTable->get_current_scope_path(), left);
-        right = generate_mul(right,get_offset_step(left));
+        right = generate_mul(right,TypeUtil::get_offset_step(left));
     }else if( left -> is_basic_type() && (right->is_refference() || right -> is_arr())){
         tmpStore = new Variable(symbolTable->get_current_scope_path(), right);
-        left = generate_mul(left,get_offset_step(right));
+        left = generate_mul(left,TypeUtil::get_offset_step(right));
     }else if( left -> is_basic_type()&& right -> is_basic_type()){
         LexicalType type = TK_INT;
         tmpStore = new Variable(symbolTable->get_current_scope_path(), type ,false);
@@ -293,7 +260,7 @@ Variable *IRGenerator::generate_sub(Variable *left, Variable *right) {
     }
     if( left->is_refference() || left -> is_arr() ){
         tmpStore = new Variable(symbolTable->get_current_scope_path(), left);
-        right = generate_mul(right,get_offset_step(left));
+        right = generate_mul(right,TypeUtil::get_offset_step(left));
     }else{
         tmpStore = new Variable(symbolTable->get_current_scope_path(), TK_INT ,false);
     }
@@ -330,24 +297,6 @@ Variable *IRGenerator::generate_not(Variable *var) {
     return tmpStore;
 }
 
-Variable *IRGenerator::generate_lea(Variable *var) {
-    if(!var->is_left_var()){
-        SE_ERROR(semanticErrorHints[INVAILD_LEFT_EXPR]);
-        return var;
-    }
-    if(var -> is_refference()){
-        // & (val -> ptr)
-        return var -> get_pointer();
-    }else{
-        // &
-        Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),var->get_type(),true);
-        symbolTable -> add_variable(tmpStore);
-        symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_LEA,tmpStore,var));
-        return tmpStore;
-    }
-
-}
-
 Variable *IRGenerator::generate_minus(Variable *var) {
     if(!var->is_basic_type()){
         SE_ERROR(semanticErrorHints[EXPR_NOT_BASIC_TYPE]);
@@ -359,18 +308,6 @@ Variable *IRGenerator::generate_minus(Variable *var) {
     return tmpStore;
 }
 
-Variable *IRGenerator::generate_ptr(Variable *var) {
-    if(!var->is_left_var()){
-        SE_ERROR(semanticErrorHints[INVAILD_LEFT_EXPR]);
-        return var;
-    }
-    Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),var->get_type(),false);
-    tmpStore -> set_is_left(true);
-    tmpStore -> set_pointer(var);
-    symbolTable -> add_variable(tmpStore);
-    return tmpStore;
-}
-
 Variable *IRGenerator::generate_dec_first(Variable *var) {
     if(!var -> is_left_var()){
         SE_ERROR(semanticErrorHints[INVAILD_LEFT_EXPR]);
@@ -378,10 +315,10 @@ Variable *IRGenerator::generate_dec_first(Variable *var) {
     }
     if(var->is_refference()){
         Variable * storePoint1 = generate_assign_ptr(var);
-        Variable * storePoint2 = generate_sub(storePoint1,get_offset_step(var));
+        Variable * storePoint2 = generate_sub(storePoint1,TypeUtil::get_offset_step(var));
         return generate_assign(var,storePoint2);
     }
-    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_SUB,var,var,get_offset_step(var)));
+    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_SUB,var,var,TypeUtil::get_offset_step(var)));
     return var;
 }
 
@@ -392,21 +329,129 @@ Variable *IRGenerator::generate_inc_first(Variable *var) {
     }
     if(var->is_refference()){
         Variable * storePoint1 = generate_assign_ptr(var);
-        Variable * storePoint2 = generate_add(storePoint1,get_offset_step(var));
+        Variable * storePoint2 = generate_add(storePoint1,TypeUtil::get_offset_step(var));
         return generate_assign(var,storePoint2);
     }
-    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_ADD,var,var,get_offset_step(var)));
+    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_ADD,var,var,TypeUtil::get_offset_step(var)));
     return var;
 }
 
 Variable *IRGenerator::generate_dec_last(Variable *var) {
     Variable * tmpStore = generate_assign_ptr(var);
-    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_SUB,var,var,get_offset_step(var)));
+    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_SUB,var,var,TypeUtil::get_offset_step(var)));
     return tmpStore;
 }
 
 Variable *IRGenerator::generate_inc_last(Variable *var) {
     Variable * tmpStore = generate_assign_ptr(var);
-    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_ADD,var,var,get_offset_step(var)));
+    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_ADD,var,var,TypeUtil::get_offset_step(var)));
     return tmpStore;
+}
+
+void IRGenerator::generate_while_head(IntermediateInstruct *& while_enter, IntermediateInstruct *& while_exit) {
+
+
+    while_enter=new IntermediateInstruct();
+    symbolTable -> add_inter_instruct(while_enter);
+    while_exit=new IntermediateInstruct();
+
+    // Push enter point to head list and exit point to back list
+    push(while_enter,while_exit);
+}
+
+void IRGenerator::generate_while_conditions(Variable * conditions, IntermediateInstruct * while_exit) {
+    if(conditions){
+        if( conditions -> is_void() ){
+             conditions = symbolTable -> get_true_var();
+        }
+        symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_JMP_FALSE, while_exit, conditions));
+    }
+}
+
+void IRGenerator::generate_while_tail(IntermediateInstruct *& while_enter, IntermediateInstruct * while_exit) {
+    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_JMP,while_enter));
+    symbolTable -> add_inter_instruct(while_exit);
+    this -> pop();
+}
+
+void IRGenerator::generate_if_head(Variable * cond, IntermediateInstruct *& if_to_else) {
+    if_to_else = new IntermediateInstruct();
+    if(cond){
+        symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_JMP_FALSE,if_to_else,cond));
+    }
+}
+
+void IRGenerator::generate_if_tail(IntermediateInstruct * if_to_else) {
+    symbolTable -> add_inter_instruct(if_to_else);
+}
+
+void IRGenerator::generate_else_head(IntermediateInstruct * else_enter, IntermediateInstruct *& else_exit) {
+    else_exit = new IntermediateInstruct();
+    symbolTable -> add_inter_instruct( new IntermediateInstruct(OP_JMP,else_exit));
+    symbolTable -> add_inter_instruct( else_enter );
+}
+
+void IRGenerator::generate_else_tail(IntermediateInstruct * else_exit) {
+    symbolTable -> add_inter_instruct(else_exit);
+}
+
+void IRGenerator::generate_break() {
+    IntermediateInstruct * tail = tail_link.back();
+    if(tail != NULL ){
+        symbolTable -> add_inter_instruct( new IntermediateInstruct(OP_JMP,tail));
+    }else{
+        SE_ERROR(semanticErrorHints[BREAK_POSITION_INVAILD]);
+    }
+}
+
+void IRGenerator::generate_continue() {
+    IntermediateInstruct * head = head_link.back();
+    if( head != NULL ){
+        symbolTable -> add_inter_instruct( new IntermediateInstruct(OP_JMP,head));
+    }else{
+        SE_ERROR(semanticErrorHints[CONTINUE_POSITION_INVAILD]);
+    }
+}
+
+void IRGenerator::generate_return(Variable * return_var) {
+    if(return_var == NULL){
+        return;
+    }
+    Function *fun = symbolTable->get_current_function();
+    if((return_var->is_void() && fun->get_type()!=TK_VOID) || (return_var->is_basic_type()&&fun->get_type()==TK_VOID)){
+        SE_ERROR(semanticErrorHints[RETURN_TYPE_NOT_MATCH]);
+        return;
+    }
+    IntermediateInstruct* returnPoint=fun->get_return_point();
+    if( return_var ->is_void() ){
+        symbolTable -> add_inter_instruct( new IntermediateInstruct(OP_RETURN,returnPoint));
+    }else{
+        symbolTable -> add_inter_instruct( new IntermediateInstruct(OP_RETURN_WITH_VAL,returnPoint,return_var));
+    }
+}
+
+bool IRGenerator::generate_variable_init(Variable *var) {
+
+    if(var->is_literal_value()){
+        return false;
+    }
+
+    symbolTable -> add_inter_instruct( new IntermediateInstruct(OP_DECLARE,var));
+
+    if(var->check_init()){
+        generate_two_value_op(var,ASSIGN,var->get_init_var());
+    }
+    return true;
+}
+
+void IRGenerator::generate_function_head(Function *function) {
+    function->enter_esp_scope();
+    symbolTable -> add_inter_instruct( new IntermediateInstruct(OP_ENTER,function));
+    function->set_return_point(new IntermediateInstruct());
+}
+
+void IRGenerator::generate_function_tail(Function *function) {
+    symbolTable -> add_inter_instruct(function->get_return_point());
+    symbolTable -> add_inter_instruct( new IntermediateInstruct(OP_EXIT,function));
+    function->exit_esp_scope();
 }

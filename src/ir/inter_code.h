@@ -9,11 +9,9 @@
 #include <vector>
 #include "commons/common.h"
 
-class Variable;
-class Function;
-
 class IntermediateInstruct{
 private:
+    static int id;
     string label;
     InterCodeOperator interCodeOperator;
 
@@ -36,7 +34,7 @@ public:
     // Push Parameters to Stack
     IntermediateInstruct(InterCodeOperator op,Variable * variable);
     // JMP instruct
-    IntermediateInstruct(InterCodeOperator op,IntermediateInstruct * target,Variable * left,Variable * right = NULL);
+    IntermediateInstruct(InterCodeOperator op,IntermediateInstruct * target,Variable * left = NULL ,Variable * right = NULL);
     // EMPTY
     IntermediateInstruct();
 
@@ -59,7 +57,7 @@ public:
 
     Variable *getRightArg() const;
 
-
+    string generate_label();
 };
 
 #endif //SHAOLANG_INTER_CODE_H

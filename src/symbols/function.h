@@ -24,6 +24,7 @@ protected:
 
     vector<int> scope_esp;
     InterCodeCollection interCodeCollection;
+    IntermediateInstruct *return_point;
 
 public:
     Function(LexicalType lexicalType,string func_name,vector<Variable *>parameter_list);
@@ -34,6 +35,9 @@ public:
     void disable_declare_flag();
     bool is_declare();
     LexicalType get_type();
+
+    void set_return_point(IntermediateInstruct * return_point);
+    IntermediateInstruct * get_return_point();
 
     bool equals(Function * other_fun);
     bool equals(vector<Variable*> parameters);

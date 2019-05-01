@@ -103,10 +103,14 @@ public:
     // To String
     string get_value_display();
 
+    // IR Generate
+    bool check_init();
+    Variable * get_init_var();
+
     // DFG
     bool is_not_init();
     bool not_a_const();
-    int get_const_val();
+    int get_integer_const_val();
 
 };
 #endif //SHAOLANG_VARIABLE_H

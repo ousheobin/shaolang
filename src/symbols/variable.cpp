@@ -5,7 +5,14 @@
 #include "variable.h"
 #include "function.h"
 
+#include "commons/type_util.h"
+
 #include <sstream>
+
+#ifndef SE_ERROR
+#include "commons/error.h"
+#define SE_ERROR(err_msg) Error::showMessage(ErrorType::Error,err_msg);
+#endif
 
 int Variable::tempId = 0;
 
@@ -227,13 +234,44 @@ string Variable::get_value_display() {
 }
 
 bool Variable::is_not_init() {
-    return false;
+    return already_init;
 }
 
 bool Variable::not_a_const() {
+    return !is_literal_value();
+}
+
+int Variable::get_integer_const_val() {
+    return integer_initial_value;
+}
+
+bool Variable::check_init() {
+    already_init = false;
+    if(!initial_value){
+        return false;
+    }
+    if(!TypeUtil::type_check(this,initial_value)){
+        SE_ERROR(semanticErrorHints[VARIABLE_INIT_ERROR]);
+    }else if(initial_value->is_literal_value()){
+        // Use constraint to init the var
+        if(initial_value -> get_type() == C_STRING ){
+            ptr_initial_value = initial_value -> get_variable_name();
+        }else if(initial_value -> get_type() == C_INTEGER){
+            integer_initial_value = initial_value -> integer_initial_value;
+        }
+        already_init = true;
+    }else{
+        // Use temp store point
+        if(var_scope_path.size()==1){
+            SE_ERROR(semanticErrorHints[GLOBAL_VARIABLE_INIT_ERROR]+":"+variable_name);
+        }else{
+            // Tell IR Generator => generate assign inst
+            return true;
+        }
+    }
     return false;
 }
 
-int Variable::get_const_val() {
-    return 0;
+Variable* Variable::get_init_var() {
+    return initial_value;
 }

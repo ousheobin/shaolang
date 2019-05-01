@@ -197,6 +197,9 @@ Token * Lexer::next_token() {
                     if(scanner.scan_and_move('=')){
                         scanner.move();
                         token = new Token(LexicalType::GE);
+                    }else if(scanner.scan_and_move('>')){
+                        scanner.move();
+                        token = new Token(LexicalType::RIGHT_STREAM);
                     }else{
                         token = new Token(LexicalType::GT);
                     }
@@ -206,6 +209,9 @@ Token * Lexer::next_token() {
                     if(scanner.scan_and_move('=')){
                         scanner.move();
                         token = new Token(LexicalType::LE);
+                    }else if(scanner.scan_and_move('<')){
+                        scanner.move();
+                        token = new Token(LexicalType::LEFT_STREAM);
                     }else{
                         token = new Token(LexicalType::LT);
                     }

@@ -9,16 +9,13 @@ KeyWord::KeyWord() {
     hashMap["char"] = TK_CHAR;
     hashMap["void"] = TK_VOID;
     hashMap["break"] = K_BREAK;
-    hashMap["case"] = K_CASE;
     hashMap["continue"] = K_CONTINUE;
-    hashMap["default"] = K_DEFAULT;
-    hashMap["do"] = K_DO;
     hashMap["else"] = K_ELSE;
-    hashMap["for"] = K_FOR;
     hashMap["if"] = K_IF;
-    hashMap["return"] = K_RETURN;
-    hashMap["switch"] = K_SWITCH;
     hashMap["while"] = K_WHILE;
+    hashMap["return"] = K_RETURN;
+    hashMap["input"] = K_INPUT;
+    hashMap["output"] = K_OUTPUT;
 }
 
 KeyWord::~KeyWord() {

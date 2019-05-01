@@ -3,6 +3,7 @@
 //
 
 #include "symbol_table.h"
+#include "ir_generator.h"
 
 Variable * SymbolTable::voidVariable = NULL;
 Variable * SymbolTable::oneVariable = new Variable(1);
@@ -43,6 +44,10 @@ Variable * SymbolTable::get_void_variable() {
     return voidVariable;
 }
 
+void SymbolTable::set_ir_generator(IRGenerator *irGen) {
+    this -> irGenerator = irGen;
+}
+
 void SymbolTable::add_variable(Variable * variable) {
 
     string name = variable->get_variable_name();
@@ -73,6 +78,13 @@ void SymbolTable::add_variable(Variable * variable) {
         }
     }
 
+    if(irGenerator != NULL){
+        bool not_constraint = irGenerator -> generate_variable_init(variable);
+        if(current_function != NULL && not_constraint ){
+            // TODO: Update status in curr function
+        }
+    }
+
 }
 
 Variable* SymbolTable::get_variable(string var_name) {
@@ -80,13 +92,13 @@ Variable* SymbolTable::get_variable(string var_name) {
     Variable *val = NULL;
     if (variableTable.find(var_name) != variableTable.end()) {
         vector<Variable *> & valVector = * variableTable[var_name];
-        int currentState = scope_vector[scope_vector.size()-1];
         int currLength = scope_vector.size();
         int maxLength = 0;
         for (int i = 0; i < valVector.size(); ++i) {
             int pathLength = valVector[i]->get_scope_path().size();
-            if(pathLength <=currLength  && currentState == valVector[i]->get_scope_path()[0]
-               && pathLength > maxLength){
+            if(pathLength <=currLength
+              && scope_vector[pathLength-1] == valVector[i]->get_scope_path()[pathLength-1]
+              && pathLength > maxLength){
                 val = valVector[i];
                 maxLength = pathLength;
             }
@@ -158,6 +170,10 @@ Function* SymbolTable::get_function(string name, vector<Variable *> & args) {
     return NULL;
 }
 
+Function * SymbolTable::get_current_function() {
+    return current_function;
+}
+
 void SymbolTable::add_inter_instruct(IntermediateInstruct *instruct) {
     if(current_function){
         current_function -> add_instruct(instruct);
@@ -171,4 +187,8 @@ void SymbolTable::show_all_code() {
         Function * fun = functionTable[function_define_order_list[i]];
         fun -> print_code();
     }
+}
+
+Variable* SymbolTable::get_true_var() {
+    return oneVariable;
 }

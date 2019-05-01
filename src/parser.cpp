@@ -332,19 +332,45 @@ void Parser::statement() {
             break;
         case K_BREAK:
             move();
+            irGenerator -> generate_break();
             if(!check_and_move(SEMICOLON)){
                 recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),SEMICOLON_LOST,SEMICOLON_ERROR);
             }
             break;
         case K_CONTINUE:
             move();
+            irGenerator -> generate_continue();
             if(!check_and_move(SEMICOLON)){
                 recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),SEMICOLON_LOST,SEMICOLON_ERROR);
             }
             break;
         case K_RETURN:
             move();
+            irGenerator -> generate_return(all_expr());
+            if(!check_and_move(SEMICOLON)){
+                recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),SEMICOLON_LOST,SEMICOLON_ERROR);
+            }
+            break;
+        case K_OUTPUT:
+            move();
+            if(!check_and_move(K_OUTPUT)){
+                recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),NONE,NONE);
+            }
             all_expr();
+            if(!check_and_move(SEMICOLON)){
+                recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),SEMICOLON_LOST,SEMICOLON_ERROR);
+            }
+            break;
+        case K_INPUT:
+            move();
+            if(!check_and_move(K_OUTPUT)){
+                recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),NONE,NONE);
+            }
+            if(!IS(ID)){
+                recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),ID_LOST,ID_ERROR);
+            }
+            var_name = ((IDToken *)current_token)->name;
+            move();
             if(!check_and_move(SEMICOLON)){
                 recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),SEMICOLON_LOST,SEMICOLON_ERROR);
             }
@@ -362,17 +388,21 @@ void Parser::statement() {
  */
 void Parser::while_statement() {
     symbolTable->enter_new_scope();
+    IntermediateInstruct * while_enter, * while_exit;
+    irGenerator -> generate_while_head(while_enter,while_exit);
     if(!check_and_move(K_WHILE)){
         recovery(IS(L_PARENTHESE),NONE,NONE);
     }
     if(!check_and_move(L_PARENTHESE)){
         recovery(ALL_RIGHT_OPERATORS,L_PARENTHESE_LOST,L_PARENTHESE_ERROR);
     }
-    all_expr();
+    Variable * cond = all_expr();
+    irGenerator -> generate_while_conditions(cond,while_exit);
     if(!check_and_move(R_PARENTHESE)){
         recovery(IS(L_BRACE),R_PARENTHESE_LOST,R_PARENTHESE_ERROR);
     }
     block();
+    irGenerator -> generate_while_tail(while_enter,while_exit);
     symbolTable->exit_current_scope();
 }
 
@@ -384,12 +414,14 @@ void Parser::if_statement() {
     if(!check_and_move(K_IF)){
         recovery(IS(L_PARENTHESE),NONE,NONE);
     }
+    IntermediateInstruct * if_to_else, * if_exit;
 
     if(!check_and_move(L_PARENTHESE)){
         recovery(ALL_EXPR_KW,L_PARENTHESE_LOST,L_PARENTHESE_ERROR);
     }
 
-    expr();
+    Variable * conditions = expr();
+    irGenerator -> generate_if_head(conditions,if_to_else);
 
     if(!check_and_move(R_PARENTHESE)){
         recovery(IS(L_BRACE),R_PARENTHESE_LOST,R_PARENTHESE_ERROR);
@@ -401,8 +433,10 @@ void Parser::if_statement() {
         statement();
     }
 
+    irGenerator -> generate_else_head(if_to_else,if_exit);
     symbolTable -> exit_current_scope();
     else_statement();
+    irGenerator -> generate_else_tail(if_exit);
 }
 
 /**
@@ -411,7 +445,11 @@ void Parser::if_statement() {
 void Parser::else_statement() {
     if(check_and_move(K_ELSE)){
         symbolTable->enter_new_scope();
-        block();
+        if(IS(L_BRACE)){
+            block();
+        }else{
+            statement();
+        }
         symbolTable->exit_current_scope();
     }
 

@@ -11,8 +11,12 @@
 class IRGenerator{
 
 private:
-    static int id;
     SymbolTable * symbolTable;
+
+    vector< IntermediateInstruct * > head_link;
+    vector< IntermediateInstruct * > tail_link;
+    void push(IntermediateInstruct *head, IntermediateInstruct * tail);
+    void pop();//删除一个作用域
 
     void generate_function_param(Variable * var);
 
@@ -34,9 +38,7 @@ private:
     Variable * generate_mod(Variable * left,Variable * right);
 
     Variable * generate_not(Variable * var);
-    Variable * generate_lea(Variable * var);
     Variable * generate_minus(Variable * var);
-    Variable * generate_ptr(Variable * var);
     Variable * generate_dec_first(Variable * var);
     Variable * generate_inc_first(Variable * var);
     Variable * generate_dec_last(Variable * var);
@@ -48,11 +50,24 @@ public:
 
     Variable * generate_two_value_op(Variable * left,LexicalType op,Variable * right);
     Variable * generate_function_call(Function * fun,vector<Variable*> * args);
-    Variable * generate_array(Variable * arrayDefine,Variable * index);
     Variable * generate_one_value_op(Variable * left,LexicalType type,Variable * right);
 
-    static bool type_check(Variable * left,Variable * right);
-    static Variable * get_offset_step(Variable * var);
+    void generate_while_head(IntermediateInstruct *& while_enter ,IntermediateInstruct *& while_exit);
+    void generate_while_conditions(Variable *cond,IntermediateInstruct * while_exit);
+    void generate_while_tail(IntermediateInstruct *& while_enter,IntermediateInstruct * while_exit);
+
+    void generate_if_head(Variable * cond,IntermediateInstruct *& if_to_else);
+    void generate_if_tail(IntermediateInstruct * if_to_else);
+    void generate_else_head(IntermediateInstruct * else_enter,IntermediateInstruct *& else_exit);
+    void generate_else_tail(IntermediateInstruct * else_exit);
+
+
+    void generate_break();
+    void generate_continue();
+    void generate_return(Variable *ret);
+    bool generate_variable_init(Variable * var);
+    void generate_function_head(Function * function);
+    void generate_function_tail(Function * function);
 
 };
 

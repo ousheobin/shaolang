@@ -44,6 +44,8 @@ private:
     int current_scope_id;
     vector<int> scope_vector;
 
+    IRGenerator * irGenerator;
+
 public:
     SymbolTable();
     ~SymbolTable();
@@ -57,16 +59,20 @@ public:
     void exit_current_scope();
     Variable * get_void_variable();
 
+    void set_ir_generator(IRGenerator * irGen );
+
     // Variable
     void add_variable(Variable * variable);
     Variable * get_variable(string var_name);
     vector<int> get_current_scope_path();
+    Variable * get_true_var();
 
     // Function
     void declare_function(Function *fun);
     void define_function(Function *fun);
     void end_define_function();
     Function * get_function(string name,vector<Variable*> & args);
+    Function * get_current_function();
 
     // String
     void add_string(Variable * str_val);

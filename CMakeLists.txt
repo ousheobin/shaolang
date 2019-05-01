@@ -32,6 +32,8 @@ add_executable(shaolang
         src/commons/keyword.cpp
         src/commons/error.cpp
         src/commons/error.h
+        src/commons/type_util.cpp
+        src/commons/type_util.h
         src/compiler.cpp
         src/compiler.h
         src/commons/argument.cpp

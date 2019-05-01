@@ -64,6 +64,14 @@ LexicalType Function::get_type() {
     return type;
 }
 
+IntermediateInstruct* Function::get_return_point() {
+    return return_point;
+}
+
+void Function::set_return_point(IntermediateInstruct *return_point) {
+    this -> return_point = return_point;
+}
+
 void Function::enter_esp_scope() {
     scope_esp.push_back(0);
 }
@@ -81,10 +89,21 @@ void Function::print_code() {
     vector<IntermediateInstruct *> codes = interCodeCollection.get_codes();
     for(int i = 0 ; i < codes.size() ; i ++ ){
         IntermediateInstruct * ins = codes[i];
-        string leftName = (ins -> getLeftArg() != NULL)?ins -> getLeftArg()-> get_value_display() : " ";
-        string rightName = (ins -> getRightArg() != NULL)?ins -> getRightArg()-> get_value_display() : " ";
-        string resultName = (ins -> getResultVar() != NULL)?ins -> getResultVar()-> get_value_display() : " ";
-        cout << "("<< interOpHints[ins->getInterCodeOperator()] << "," <<  leftName << ","
-        << rightName << ","<<resultName<<")"<<endl;
+        if(ins -> getJumpTarget()){
+            string leftName = (ins -> getLeftArg() != NULL)?ins -> getLeftArg()-> get_value_display() : " ";
+            string rightName = (ins -> getRightArg() != NULL)?ins -> getRightArg()-> get_value_display() : " ";
+            string resultName = ins -> getJumpTarget()-> getLabel();
+            cout << "("<< interOpHints[ins->getInterCodeOperator()] << "," <<  leftName << ","
+                 << rightName << ","<<resultName<<")"<<endl;
+        }else if( ins->getInterCodeOperator() != OP_EMPTY_INST){
+            string leftName = (ins -> getLeftArg() != NULL)?ins -> getLeftArg()-> get_value_display() : " ";
+            string rightName = (ins -> getRightArg() != NULL)?ins -> getRightArg()-> get_value_display() : " ";
+            string resultName = (ins -> getResultVar() != NULL)?ins -> getResultVar()-> get_value_display() : " ";
+            cout << "("<< interOpHints[ins->getInterCodeOperator()] << "," <<  leftName << ","
+                 << rightName << ","<<resultName<<")"<<endl;
+        }else{
+            cout << ins-> getLabel() <<endl;
+        }
+
     }
 }
