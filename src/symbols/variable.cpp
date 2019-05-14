@@ -53,7 +53,7 @@ Variable::Variable(int val) {
 
 Variable::Variable(vector<int> scope, LexicalType type, bool is_ptr) {
     stringstream name;
-    name <<"<<temp_"<< (tempId ++ ) <<">>";
+    name <<".L"<< (tempId ++ );
     init_var_obj();
     set_variable_name(name.str());
     set_type(type);
@@ -65,7 +65,7 @@ Variable::Variable(vector<int> scope, LexicalType type, bool is_ptr) {
 
 Variable::Variable(vector<int> scope, Variable *var) {
     stringstream name;
-    name <<"<<temp_"<< (tempId ++ ) <<">>";
+    name <<".L"<< (tempId ++ );
     init_var_obj();
     set_scope_path(scope);
     set_type(var->get_type());

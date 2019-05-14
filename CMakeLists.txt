@@ -50,5 +50,4 @@ add_executable(shaolang
         src/ir/inter_code_collection.cpp
         src/ir/inter_code_collection.h
         src/ir_generator.cpp
-        src/ir_generator.h
-        )
+        src/ir_generator.h)

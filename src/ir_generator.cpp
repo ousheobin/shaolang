@@ -7,6 +7,8 @@
 
 IRGenerator::IRGenerator(SymbolTable *symbolTab) {
      this -> symbolTable = symbolTab;
+     tail_link.push_back(NULL);
+     head_link.push_back(NULL);
 }
 
 void IRGenerator::push(IntermediateInstruct * head, IntermediateInstruct *tail) {
@@ -74,7 +76,7 @@ Variable *IRGenerator::generate_function_call(Function *fun, vector<Variable *> 
         Variable * returnVar = new Variable(symbolTable->get_current_scope_path(),fun->get_type(),false);
         symbolTable -> add_variable(returnVar);
         // 添加带返回数据的中间指令
-        symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_PROC,fun,returnVar));
+        symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_CALL,fun,returnVar));
         return returnVar;
     }else{
         // 添加不带返回数据的返回
@@ -272,6 +274,7 @@ Variable *IRGenerator::generate_sub(Variable *left, Variable *right) {
 Variable *IRGenerator::generate_mul(Variable *left, Variable *right) {
     LexicalType tgrType = TK_INT;
     Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),tgrType, false);
+    symbolTable -> add_variable(tmpStore);
     symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_MUL,tmpStore,left,right));
     return tmpStore;
 }
@@ -279,6 +282,7 @@ Variable *IRGenerator::generate_mul(Variable *left, Variable *right) {
 Variable *IRGenerator::generate_div(Variable *left, Variable *right) {
     LexicalType tgrType = TK_INT;
     Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),tgrType, false);
+    symbolTable -> add_variable(tmpStore);
     symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_DIV,tmpStore,left,right));
     return tmpStore;
 }
@@ -286,6 +290,7 @@ Variable *IRGenerator::generate_div(Variable *left, Variable *right) {
 Variable *IRGenerator::generate_mod(Variable *left, Variable *right) {
     LexicalType tgrType = TK_INT;
     Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),tgrType, false);
+    symbolTable -> add_variable(tmpStore);
     symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_MOD,tmpStore,left,right));
     return tmpStore;
 }

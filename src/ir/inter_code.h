@@ -11,7 +11,6 @@
 
 class IntermediateInstruct{
 private:
-    static int id;
     string label;
     InterCodeOperator interCodeOperator;
 
@@ -58,6 +57,8 @@ public:
     Variable *getRightArg() const;
 
     string generate_label();
+
+    void display();
 };
 
 #endif //SHAOLANG_INTER_CODE_H

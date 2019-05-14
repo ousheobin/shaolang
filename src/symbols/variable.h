@@ -12,7 +12,6 @@
 
 class Variable{
 private:
-    static int tempId;
 
     string variable_name;
     LexicalType type;
@@ -48,6 +47,8 @@ private:
     void init_var_obj();
 
 public:
+
+    static int tempId;
 
     // DFG Opt Fields
     int opt_index;

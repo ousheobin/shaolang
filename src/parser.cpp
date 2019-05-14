@@ -19,7 +19,7 @@
 #define ALL_RIGHT_OPERATORS (ALL_COMPARE_SYMBOL)OR(OR)OR(AND)OR(ADD)OR(SUB)OR(MUL)OR(DIV)OR(MOD)
 #define ALL_LEFT_OPERATORS (ALL_RIGHT_OPERATORS)OR(INC)OR(DEC)
 #define ALL_EXPR_KW IS(L_PARENTHESE)OR(C_INTEGER)OR(C_CHAR)OR(C_STRING)OR(ID)OR(NOT)OR(SUB)OR(INC)OR(DEC)
-#define ALL_STATEMENT_KW (ALL_EXPR_KW)OR(SEMICOLON)OR(K_WHILE)OR(K_IF)OR(K_CONTINUE)OR(K_RETURN)
+#define ALL_STATEMENT_KW (ALL_EXPR_KW)OR(SEMICOLON)OR(K_WHILE)OR(K_IF)OR(K_CONTINUE)OR(K_RETURN)OR(K_BREAK)
 
 Parser::Parser(Lexer * lex, SymbolTable * symTable,IRGenerator * irGen){
     symbolTable = symTable;
@@ -319,11 +319,11 @@ void Parser::local_var_def() {
 void Parser::statement() {
     string var_name = "";
     switch (current_token->type){
-        case ID:
-            var_name = ((IDToken *) current_token)->name;
-            move();
-            id_assgin(var_name);
-            break;
+//        case ID:
+//            var_name = ((IDToken *) current_token)->name;
+//            move();
+//            id_assgin(var_name);
+//            break;
         case K_WHILE:
             while_statement();
             break;
@@ -727,7 +727,7 @@ Variable * Parser::constraint() {
 }
 
 /**
- * <ID_EXTEND>-><L_PARENTHESE><INIT_FUN_ARG><R_PARENTHESE>| ε
+ * <ID_EXTEND>-><L_PARENTHESE><INIT_FUN_ARG><R_PARENTHESE> | <ID_ASSIGN> | ε
  */
 Variable * Parser::id_extend(string val_name) {
     Variable * variable = NULL;
@@ -739,6 +739,8 @@ Variable * Parser::id_extend(string val_name) {
         }
         Function * function = symbolTable -> get_function(val_name,* args);
         irGenerator -> generate_function_call(function,args);
+    }else if(IS(ASSIGN)){
+        id_assgin(val_name);
     }else{
         variable = symbolTable -> get_variable(val_name);
     }
@@ -746,7 +748,7 @@ Variable * Parser::id_extend(string val_name) {
 }
 
 /**
- * <ID_ASSIGN> -> <ASSIGN><EXPR><SEMICOLON>
+ * <ID_ASSIGN> -> <ASSIGN><EXPR>
  * @return
  */
 Variable* Parser::id_assgin(string var_name) {
@@ -756,10 +758,8 @@ Variable* Parser::id_assgin(string var_name) {
         if(var != NULL){
             Variable * initVariable = expr();
             var -> set_init_value(initVariable);
+            irGenerator -> generate_two_value_op(var,ASSIGN,initVariable);
         }
-    }
-    if(!check_and_move(SEMICOLON)){
-        recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),SEMICOLON_LOST,SEMICOLON_ERROR);
     }
     return var;
 }

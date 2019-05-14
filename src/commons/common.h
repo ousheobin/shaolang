@@ -122,8 +122,8 @@ const string semanticErrorHints[] = {
         "表达式使用了返回值为void的函数",
         "表达式使用了非基本类型进行操作",
         "不允许使用基本类型减非基本类型",
-        "break关键字没有处于switch,while,do-while或for语句下",
-        "continue关键字没有处于while,do-while或for语句下",
+        "break关键字没有处于while语句下",
+        "continue关键字没有处于while语句下",
         "返回值与声明不匹配",
         "函数参数列表定义与声明冲突",
         "函数返回类型定义与声明冲突"

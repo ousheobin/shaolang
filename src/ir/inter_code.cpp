@@ -3,10 +3,10 @@
 //
 
 #include "inter_code.h"
+#include "symbols/variable.h"
+#include "symbols/function.h"
 #include <sstream>
 #include <iostream>
-
-int IntermediateInstruct::id = 0;
 
 IntermediateInstruct::IntermediateInstruct(InterCodeOperator op, Variable *result, Variable *left, Variable *right) {
     init();
@@ -104,6 +104,45 @@ Variable *IntermediateInstruct::getRightArg() const {
 string IntermediateInstruct::generate_label() {
     string lb=".L";
     stringstream ss;
-    ss<<lb<<(id ++);
+    ss<<lb<<(Variable::tempId ++);
     return ss.str();
+}
+
+void IntermediateInstruct::display() {
+    if(label!=""){
+        printf("%s:\n",label.c_str());
+        return;
+    }
+    switch(interCodeOperator)
+    {
+        case OP_DECLARE: cout <<"dec "<< leftArg->get_value_display()<<endl;break;
+        case OP_ENTER: cout <<"entry"<<endl;break;
+        case OP_EXIT: cout <<"exit"<<endl;break;
+        case OP_ASSIGN: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<endl;break;
+        case OP_ADD: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" + "<<rightArg->get_value_display()<<endl;break;
+        case OP_SUB: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" - "<<rightArg->get_value_display()<<endl;break;
+        case OP_MUL: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" * "<<rightArg->get_value_display()<<endl;break;
+        case OP_DIV: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" / "<<rightArg->get_value_display()<<endl;break;
+        case OP_MOD: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" %% "<<rightArg->get_value_display()<<endl;break;
+        case OP_MINUS: cout <<resultVar->get_value_display()<<" = "<<"-"<<leftArg->get_value_display()<<endl;break;
+        case OP_GT: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" > "<<rightArg->get_value_display()<<endl;break;
+        case OP_GE: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" >= "<<rightArg->get_value_display()<<endl;break;
+        case OP_LT: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" < "<<rightArg->get_value_display()<<endl;break;
+        case OP_LE: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" <= "<<rightArg->get_value_display()<<endl;break;
+        case OP_EQ: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" == "<<rightArg->get_value_display()<<endl;break;
+        case OP_NEQ: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" != "<<rightArg->get_value_display()<<endl;break;
+        case OP_NOT: cout <<resultVar->get_value_display()<<" = "<<"!"<<leftArg->get_value_display()<<endl;break;
+        case OP_AND: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" && "<<rightArg->get_value_display()<<endl;break;
+        case OP_OR: cout <<resultVar->get_value_display()<<" = "<<leftArg->get_value_display()<<" || "<<rightArg->get_value_display()<<endl;break;
+        case OP_JMP: cout <<"goto "<<jumpTarget->label.c_str()<<endl;break;
+        case OP_JMP_TRUE: cout <<"if "<<leftArg->get_value_display()<<" true jmp to "<<jumpTarget->label.c_str()<<endl;break;
+        case OP_JMP_FALSE: cout <<"if "<<leftArg->get_value_display()<<" no true jmp to "<<jumpTarget->label.c_str()<<endl;break;
+        case OP_JMP_NEQ: cout <<"if "<<leftArg->get_value_display()<<" != "<<rightArg->get_value_display()<<" jmp to "<<jumpTarget->label.c_str()<<endl;break;
+        case OP_ARG: cout <<"arg "<<leftArg->get_value_display()<<endl;break;
+        case OP_PROC: cout <<function->get_function_name().c_str()<<"("<<endl;break;
+        case OP_CALL: cout <<resultVar->get_value_display()<<" = "<<function->get_function_name().c_str()<<"()"<<endl;break;
+        case OP_RETURN: cout <<"goto "<<jumpTarget->label.c_str()<<endl;break;
+        case OP_RETURN_WITH_VAL: cout <<"return "<<leftArg->get_value_display()<<" then goto "<<jumpTarget->label.c_str()<<endl;break;
+        case OP_LEA: cout <<resultVar->get_value_display()<<" = "<<"&"<<leftArg->get_value_display()<<endl;break;
+    }
 }

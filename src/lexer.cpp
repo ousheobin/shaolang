@@ -90,7 +90,7 @@ Token * Lexer::next_token() {
         else if(current_char == '\''){
             char character;
             current_char = scanner.move();
-            if(current_char == '\''){
+            if(current_char == '\\'){
                 current_char = scanner.move();
                 switch (current_char){
                     case '\\':

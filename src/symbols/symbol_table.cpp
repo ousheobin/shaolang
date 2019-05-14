@@ -144,10 +144,12 @@ void SymbolTable::define_function(Function *fun) {
         delete fun;
         current_function = existsFunction;
     }
+    irGenerator -> generate_function_head(current_function);
 
 }
 
 void SymbolTable::end_define_function() {
+    irGenerator -> generate_function_tail(current_function);
     current_function = NULL;
 }
 
