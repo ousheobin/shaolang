@@ -23,6 +23,8 @@ private:
 
     bool first;
 
+    Block * block;
+
     void init();
 public:
 
@@ -56,9 +58,19 @@ public:
 
     Variable *getRightArg() const;
 
+    Block * get_block();
+    void set_block(Block * block);
+
     string generate_label();
 
-    void display();
+    string display();
+
+    bool is_jmp();
+    bool is_jmcond();
+    bool is_jmp_or_jmcond();
+
+    void set_first();
+    bool is_first();
 };
 
 #endif //SHAOLANG_INTER_CODE_H

@@ -159,7 +159,11 @@ const string interOpHints[] = {
 
 class Variable;
 class Function;
+class IntermediateInstruct;
+class InterCodeCollection;
 class SymbolTable;
 class IRGenerator;
+class Block;
+class DataFlowGraph;
 
 #endif //SHAOLANG_COMMON_H

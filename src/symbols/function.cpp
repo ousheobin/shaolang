@@ -7,6 +7,8 @@
 
 #include "function.h"
 #include "variable.h"
+#include "dataflow/data_flow_graph.h"
+#include "dataflow/block.h"
 
 Function::Function(LexicalType lexicalType, string func_name, vector<Variable *> parameter_list) {
     type= lexicalType;
@@ -84,12 +86,16 @@ void Function::add_instruct(IntermediateInstruct *instruct) {
     interCodeCollection.add_code(instruct);
 }
 
+void Function::do_optimize() {
+    DataFlowGraph * dfg = new DataFlowGraph(interCodeCollection);
+    cout << dfg->to_string() << endl;
+}
+
 void Function::print_code() {
     std::cout << "function - "<<function_name << std::endl;
     vector<IntermediateInstruct *> codes = interCodeCollection.get_codes();
     for(int i = 0 ; i < codes.size() ; i ++ ){
         IntermediateInstruct * ins = codes[i];
-        ins->display();
-
+        cout << ins->display();
     }
 }

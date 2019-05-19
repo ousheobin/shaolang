@@ -46,6 +46,9 @@ public:
     void exit_esp_scope();
 
     void add_instruct(IntermediateInstruct * instruct);
+
+    void do_optimize();
+
     void print_code();
 
 };

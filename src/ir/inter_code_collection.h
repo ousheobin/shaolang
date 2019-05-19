@@ -17,6 +17,8 @@ public:
     void add_code(IntermediateInstruct * instruct);
     vector<IntermediateInstruct*> get_codes();
 
+    void mark_all_first_inst();
+
 };
 
 

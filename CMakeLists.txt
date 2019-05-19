@@ -50,4 +50,8 @@ add_executable(shaolang
         src/ir/inter_code_collection.cpp
         src/ir/inter_code_collection.h
         src/ir_generator.cpp
-        src/ir_generator.h)
+        src/ir_generator.h
+        src/dataflow/block.cpp
+        src/dataflow/block.h
+        src/dataflow/data_flow_graph.cpp
+        src/dataflow/data_flow_graph.h)
