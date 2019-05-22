@@ -17,7 +17,7 @@ private:
     void link_blocks();
 
     void reset_visited();
-    void is_reachable(Block * block);
+    bool is_reachable(Block * block);
     void delete_all_next_link(Block * block);
 
 public:
@@ -28,9 +28,11 @@ public:
     DataFlowGraph(InterCodeCollection & codeCollection);
     ~DataFlowGraph();
 
-    void remove_line(Block * begin,Block * end);
+    void un_link(Block * begin,Block * end);
 
     string to_string();
+
+    void write_opt_code(vector<IntermediateInstruct *> & code_tgt);
 
 };
 

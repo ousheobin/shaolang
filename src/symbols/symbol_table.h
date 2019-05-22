@@ -51,6 +51,7 @@ public:
     ~SymbolTable();
 
     static Variable * voidVariable;
+    static Variable * zeroVariable;
     static Variable * oneVariable;
     static Variable * fourVariable;
     static Variable * eightVariable;
@@ -66,6 +67,7 @@ public:
     Variable * get_variable(string var_name);
     vector<int> get_current_scope_path();
     Variable * get_true_var();
+    vector<Variable *> * get_global_variables();
 
     // Function
     void declare_function(Function *fun);
@@ -80,6 +82,9 @@ public:
     // Inter Code
     void add_inter_instruct(IntermediateInstruct * instruct);
     void show_all_code();
+
+    // Optimization
+    void optimize();
 };
 
 

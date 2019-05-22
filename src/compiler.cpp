@@ -21,6 +21,9 @@ void Compiler::compile() {
     parser = new Parser(lexer,symbolTable,irGenerator);
     parser -> do_anlayse();
     symbolTable -> show_all_code();
+    symbolTable -> optimize();
+    cout << "----- After Optimization: ----"<<endl;
+    symbolTable -> show_all_code();
 }
 
 Compiler::~Compiler() {

@@ -48,6 +48,7 @@ Variable::Variable(int val) {
     set_variable_name("<<int>>");
     is_constraint = true;
     is_left_value = false;
+    integer_initial_value = val;
     set_type(LexicalType::C_INTEGER);
 }
 
@@ -102,6 +103,8 @@ void Variable::init_var_obj() {
 
     frame_offsize = 0;
     is_temp_store = false;
+
+    opt_index = -1;
 }
 
 void Variable::set_variable_name(const string &variable_name) {
@@ -233,7 +236,7 @@ string Variable::get_value_display() {
     return ss.str();
 }
 
-bool Variable::is_not_init() {
+bool Variable::is_init() {
     return already_init;
 }
 

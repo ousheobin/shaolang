@@ -84,6 +84,8 @@ public:
     bool is_basic_type();
     bool is_literal_value();
 
+    int get_int_value();
+
     // Common
     string get_variable_name();
     string get_ptr_variable_name();
@@ -109,7 +111,7 @@ public:
     Variable * get_init_var();
 
     // DFG
-    bool is_not_init();
+    bool is_init();
     bool not_a_const();
     int get_integer_const_val();
 

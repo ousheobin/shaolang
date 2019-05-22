@@ -6,6 +6,7 @@
 #include "ir_generator.h"
 
 Variable * SymbolTable::voidVariable = NULL;
+Variable * SymbolTable::zeroVariable = new Variable(0);
 Variable * SymbolTable::oneVariable = new Variable(1);
 Variable * SymbolTable::fourVariable = new Variable(4);
 Variable * SymbolTable::eightVariable = new Variable(8);
@@ -191,6 +192,31 @@ void SymbolTable::show_all_code() {
     }
 }
 
+vector<Variable *> * SymbolTable::get_global_variables() {
+    vector<Variable *>  * all_variables = new vector<Variable *>;
+    for(unsigned long index = 0 ; index < variable_define_order_list.size() ; index ++ ){
+        string variable_name = variable_define_order_list[index];
+        if(variable_name[0] == '<'){
+            continue;
+        }
+        vector<Variable *> & valVector = * variableTable[variable_name];
+        for (int i = 0; i < valVector.size(); ++i) {
+            if(valVector[i]->get_scope_path().size() == 1){
+                all_variables->push_back(valVector[i]);
+                break;
+            }
+        }
+    }
+    return all_variables;
+}
+
 Variable* SymbolTable::get_true_var() {
     return oneVariable;
+}
+
+void SymbolTable::optimize() {
+    for(int i = 0 ; i < function_define_order_list.size() ; i ++ ) {
+        Function *fun = functionTable[function_define_order_list[i]];
+        fun -> do_optimize(this);
+    }
 }

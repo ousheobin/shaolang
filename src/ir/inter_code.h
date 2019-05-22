@@ -25,6 +25,9 @@ private:
 
     Block * block;
 
+    vector<long> in_vals;
+    vector<long> out_vals;
+
     void init();
 public:
 
@@ -40,7 +43,7 @@ public:
     IntermediateInstruct();
 
     void replace_inst(InterCodeOperator op,Variable * result,Variable * left,Variable * right);
-    void optimise_jmp(InterCodeOperator op,IntermediateInstruct * target,Variable * left,Variable * right);
+    void optimise_jmp(InterCodeOperator op,IntermediateInstruct * target);
 
     void chg_call_to_proc();
 
@@ -58,7 +61,12 @@ public:
 
     Variable *getRightArg() const;
 
+    void setLeftArg(Variable *leftArg);
+
+    void setRightArg(Variable *rightArg);
+
     Block * get_block();
+
     void set_block(Block * block);
 
     string generate_label();
@@ -68,6 +76,15 @@ public:
     bool is_jmp();
     bool is_jmcond();
     bool is_jmp_or_jmcond();
+
+    bool is_declare();
+    bool is_expr();
+
+    void set_in_vals(vector<long> & invals);
+    vector<long> get_in_vals();
+
+    void set_out_vals(vector<long> & outvals);
+    vector<long> get_out_vals();
 
     void set_first();
     bool is_first();

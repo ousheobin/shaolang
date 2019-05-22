@@ -26,6 +26,9 @@ protected:
     InterCodeCollection interCodeCollection;
     IntermediateInstruct *return_point;
 
+    bool is_opt;
+    vector<IntermediateInstruct *> optCode;
+
 public:
     Function(LexicalType lexicalType,string func_name,vector<Variable *>parameter_list);
 
@@ -47,7 +50,7 @@ public:
 
     void add_instruct(IntermediateInstruct * instruct);
 
-    void do_optimize();
+    void do_optimize(SymbolTable * symbolTable);
 
     void print_code();
 

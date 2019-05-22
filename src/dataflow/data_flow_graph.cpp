@@ -35,48 +35,98 @@ void DataFlowGraph::create_new_blocks() {
 }
 
 void DataFlowGraph::link_blocks() {
-    unsigned long size = all_blocks.size();
-    for( unsigned long index = 0 ; index < size ; index ++ ){
-        IntermediateInstruct * last = all_blocks[index]->get_inner_instructs()->back();
+
+    for (unsigned int i = 0; i < all_blocks.size()-1; ++i){
+        IntermediateInstruct * last=all_blocks[i]->get_inner_instructs()->back();
         if(!last->is_jmp()){
-            if(index < size - 1){
-                all_blocks[index] -> add_next_block(all_blocks[index+1]);
-            }
-            if( index > 0 ){
-                all_blocks[index] -> add_prev_block(all_blocks[index-1]);
-            }
+            all_blocks[i]->get_next_block().push_back(all_blocks[i+1]);
+        }
+    }
+    for (unsigned int i = 1; i < all_blocks.size(); ++i){
+        IntermediateInstruct*last=all_blocks[i-1]->get_inner_instructs()->back();
+        if(!last->is_jmp()) {
+            all_blocks[i]->get_prev_block().push_back(all_blocks[i - 1]);
         }
     }
 
     for( unsigned long index = 0 ; index < all_blocks.size() ; index ++ ) {
         IntermediateInstruct *last = all_blocks[index]->get_inner_instructs()->back();
-        if(last->is_jmp_or_jmcond() && last -> getJumpTarget() != NULL){
+        if(last->is_jmp_or_jmcond()){
             all_blocks[index] -> add_next_block(last -> getJumpTarget()->get_block());
             last -> getJumpTarget()->get_block()->add_prev_block(all_blocks[index]);
         }
     }
 
-
 }
 
 void DataFlowGraph::reset_visited() {
-
+    for(vector<Block *>::iterator iter = all_blocks.begin() ; iter != all_blocks.end() ; iter ++){
+        Block * block = * iter;
+        block -> set_already_visited(false);
+    }
 }
 
-void DataFlowGraph::is_reachable(Block *block) {
-
+bool DataFlowGraph::is_reachable(Block *block) {
+    if(block == all_blocks[0]){
+        return true;
+    }
+    if(block -> is_already_visited()){
+        return false;
+    }
+    block -> set_already_visited(true);
+    bool reachable = false;
+    for(vector<Block *>::iterator iter = block->get_prev_block().begin() ;
+        iter != block->get_prev_block().end() ; iter ++){
+        Block * testBlock = * iter;
+        if(is_reachable(testBlock)){
+            reachable = true;
+            break;
+        }
+    }
+    return reachable;
 }
 
 void DataFlowGraph::delete_all_next_link(Block *block) {
 
+    if(is_reachable(block)) {
+        return;
+    }
+    vector<Block*> delList;
+    for(vector<Block*>::iterator i=block->next.begin();i!=block->next.end();++i){
+        delList.push_back(*i);
+    }
+    for(vector<Block*>::iterator i=delList.begin();i!=delList.end();++i){
+        block->next.erase(remove(block->next.begin(), block->next.end(), *i),block->next.end());
+        (*i)->prev.erase(remove((*i)->prev.begin(), (*i)->prev.end(), *i),(*i)->prev.end());
+    }
+    for(vector<Block*>::iterator i=delList.begin();i!=delList.end();++i){
+        delete_all_next_link(*i);
+    }
 }
 
 DataFlowGraph::~DataFlowGraph() {
 
 }
 
-void DataFlowGraph::remove_line(Block *begin, Block *end) {
-
+void DataFlowGraph::un_link(Block *begin, Block *end) {
+    if( begin != NULL ){
+        for(vector<Block *>::iterator iter = begin->get_next_block().begin() ;
+            iter != begin->get_next_block().end() ; iter ++){
+            if(*iter == end){
+                begin -> get_next_block().erase(iter);
+                break;
+            }
+        }
+        for(vector<Block *>::iterator iter = end->get_prev_block().begin() ;
+            iter != end->get_prev_block().end() ; iter ++){
+            if(*iter == begin){
+                end -> get_prev_block().erase(iter);
+                break;
+            }
+        }
+    }
+    reset_visited();
+    delete_all_next_link(end);
 }
 
 string DataFlowGraph::to_string() {
@@ -84,4 +134,17 @@ string DataFlowGraph::to_string() {
         std::cout << all_blocks[index]->to_string();
     }
     return string();
+}
+
+void DataFlowGraph::write_opt_code(vector<IntermediateInstruct *> & code_tgt) {
+    code_tgt.clear();
+    for(unsigned long id = 0 ; id < all_blocks.size() ; id ++ ){
+        reset_visited();
+        if(is_reachable(all_blocks[id])){
+            vector<IntermediateInstruct *> * insts = all_blocks[id]->get_inner_instructs();
+            for(vector<IntermediateInstruct*>::iterator iter = insts->begin(); iter != insts->end(); iter ++){
+                code_tgt.push_back(*iter);
+            }
+        }
+    }
 }

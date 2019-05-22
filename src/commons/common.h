@@ -165,5 +165,6 @@ class SymbolTable;
 class IRGenerator;
 class Block;
 class DataFlowGraph;
+class ConstPropagation;
 
 #endif //SHAOLANG_COMMON_H

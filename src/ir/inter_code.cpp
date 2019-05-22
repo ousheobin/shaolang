@@ -60,12 +60,9 @@ void IntermediateInstruct::replace_inst(InterCodeOperator op, Variable *result, 
     this -> rightArg = right;
 }
 
-void IntermediateInstruct::optimise_jmp(InterCodeOperator op, IntermediateInstruct *target, Variable *left,
-                                        Variable *right) {
+void IntermediateInstruct::optimise_jmp(InterCodeOperator op, IntermediateInstruct *target) {
     this -> interCodeOperator = op;
     this -> jumpTarget = target;
-    this -> leftArg = left;
-    this -> rightArg = right;
 }
 
 void IntermediateInstruct::chg_call_to_proc() {
@@ -129,6 +126,30 @@ bool IntermediateInstruct::is_jmp_or_jmcond() {
     return (is_jmp() || is_jmcond());
 }
 
+bool IntermediateInstruct::is_declare() {
+    return interCodeOperator == OP_DECLARE;
+}
+
+bool IntermediateInstruct::is_expr() {
+    return (interCodeOperator >= OP_ASSIGN && interCodeOperator <= OP_OR);
+}
+
+void IntermediateInstruct::set_in_vals(vector<long> & invals) {
+    this->in_vals = invals;
+}
+
+vector<long> IntermediateInstruct::get_in_vals() {
+    return in_vals;
+}
+
+void IntermediateInstruct::set_out_vals(vector<long> &outvals) {
+    this -> out_vals = outvals;
+}
+
+vector<long> IntermediateInstruct::get_out_vals() {
+    return out_vals;
+}
+
 void IntermediateInstruct::set_first() {
     this -> first = true;
 }
@@ -175,4 +196,12 @@ string IntermediateInstruct::display() {
         default: ss<<interOpHints[interCodeOperator]<<resultVar->get_value_display()<<endl;
     }
     return ss.str();
+}
+
+void IntermediateInstruct::setLeftArg(Variable *leftArg) {
+    IntermediateInstruct::leftArg = leftArg;
+}
+
+void IntermediateInstruct::setRightArg(Variable *rightArg) {
+    IntermediateInstruct::rightArg = rightArg;
 }

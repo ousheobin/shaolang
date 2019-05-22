@@ -7,6 +7,7 @@
 
 #include "function.h"
 #include "variable.h"
+#include "optimization/const_opt.h"
 #include "dataflow/data_flow_graph.h"
 #include "dataflow/block.h"
 
@@ -15,6 +16,7 @@ Function::Function(LexicalType lexicalType, string func_name, vector<Variable *>
     function_name = func_name;
     parameters = parameter_list;
     has_declare = false;
+    is_opt = false;
 }
 
 string Function::get_function_name() {
@@ -86,16 +88,32 @@ void Function::add_instruct(IntermediateInstruct *instruct) {
     interCodeCollection.add_code(instruct);
 }
 
-void Function::do_optimize() {
+void Function::do_optimize(SymbolTable * symbolTable) {
+    if(is_opt){
+        return;
+    }
     DataFlowGraph * dfg = new DataFlowGraph(interCodeCollection);
-    cout << dfg->to_string() << endl;
+    // cout << dfg -> to_string();
+    ConstPropagation * constPropagation = new ConstPropagation(dfg,symbolTable,parameters);
+    constPropagation -> optimize();
+    dfg -> write_opt_code(optCode);
+    cout << dfg -> to_string();
+    is_opt = true;
 }
 
 void Function::print_code() {
     std::cout << "function - "<<function_name << std::endl;
-    vector<IntermediateInstruct *> codes = interCodeCollection.get_codes();
-    for(int i = 0 ; i < codes.size() ; i ++ ){
-        IntermediateInstruct * ins = codes[i];
-        cout << ins->display();
+    if(!is_opt){
+        vector<IntermediateInstruct *> codes = interCodeCollection.get_codes();
+        for(int i = 0 ; i < codes.size() ; i ++ ){
+            IntermediateInstruct * ins = codes[i];
+            cout << ins->display();
+        }
+    }else{
+        for(int i = 0 ; i < optCode.size() ; i ++ ){
+            IntermediateInstruct * ins = optCode[i];
+            cout << ins->display();
+        }
     }
+
 }
