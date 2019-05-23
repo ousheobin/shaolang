@@ -7,6 +7,7 @@
 #include "ir/inter_code_collection.h"
 
 #include <iostream>
+#include <algorithm>
 
 DataFlowGraph::DataFlowGraph(InterCodeCollection &codeCollection) {
     codeCollection.mark_all_first_inst();
