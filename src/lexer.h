@@ -8,15 +8,12 @@
 #include <vector>
 
 #include "commons/token.h"
-#include "commons/keyword.h"
 #include "commons/scanner.h"
 
 using namespace std;
 
 class Lexer{
 private:
-
-    static KeyWord keyWord;
 
     FileScanner & scanner;
     char current_char = -1;

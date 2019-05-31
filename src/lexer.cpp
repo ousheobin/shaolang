@@ -10,8 +10,6 @@
 
 #define LEXICAL_ERROR(err_msg) Error::showMessage(ErrorType::Error,err_msg);
 
-KeyWord Lexer::keyWord;
-
 Lexer::Lexer(FileScanner &sc):scanner(sc) {
     this -> current_char = scanner.move();
     this -> current_token = NULL;
@@ -34,16 +32,102 @@ Token * Lexer::next_token() {
         // 标识符或关键字
         if (check_is_valid_char(current_char)){
             string keywor_or_id = "";
-            do{
-                keywor_or_id += current_char;
-                current_char = scanner.move();
-            }while (check_is_valid_char(current_char)||check_is_number(current_char)||current_char=='_');
 
-            if(keyWord.contains(keywor_or_id)){
-                token = new Token(keyWord.get_type(keywor_or_id));
-            }else{
+            if(current_char == 'i'){
+               // int if
+                do{
+                    keywor_or_id += current_char;
+                    current_char = scanner.move();
+                }while (check_is_valid_char(current_char)||check_is_number(current_char)||current_char=='_');
+
+                if(keywor_or_id == "int"){
+                    token = new Token(TK_INT);
+                }else if(keywor_or_id == "if"){
+                    token = new Token(K_IF);
+                }else{
+                    token = new IDToken(keywor_or_id);
+                }
+           }else if(current_char == 'c'){
+               // char continue
+                do{
+                    keywor_or_id += current_char;
+                    current_char = scanner.move();
+                }while (check_is_valid_char(current_char)||check_is_number(current_char)||current_char=='_');
+
+                if(keywor_or_id == "char"){
+                    token = new Token(TK_CHAR);
+                }else if(keywor_or_id == "continue"){
+                    token = new Token(K_CONTINUE);
+                }else{
+                    token = new IDToken(keywor_or_id);
+                }
+           }else if(current_char == 'v'){
+               // void
+                do{
+                    keywor_or_id += current_char;
+                    current_char = scanner.move();
+                }while (check_is_valid_char(current_char)||check_is_number(current_char)||current_char=='_');
+
+                if(keywor_or_id == "void"){
+                    token = new Token(TK_VOID);
+                }else{
+                    token = new IDToken(keywor_or_id);
+                }
+           }else if(current_char == 'b'){
+               // break
+                do{
+                    keywor_or_id += current_char;
+                    current_char = scanner.move();
+                }while (check_is_valid_char(current_char)||check_is_number(current_char)||current_char=='_');
+
+                if(keywor_or_id == "break"){
+                    token = new Token(K_BREAK);
+                }else{
+                    token = new IDToken(keywor_or_id);
+                }
+           }else if(current_char == 'e'){
+               // else
+                do{
+                    keywor_or_id += current_char;
+                    current_char = scanner.move();
+                }while (check_is_valid_char(current_char)||check_is_number(current_char)||current_char=='_');
+
+                if(keywor_or_id == "else"){
+                    token = new Token(K_ELSE);
+                }else{
+                    token = new IDToken(keywor_or_id);
+                }
+           }else if(current_char == 'w'){
+               // while
+                do{
+                    keywor_or_id += current_char;
+                    current_char = scanner.move();
+                }while (check_is_valid_char(current_char)||check_is_number(current_char)||current_char=='_');
+
+                if(keywor_or_id == "while"){
+                    token = new Token(K_WHILE);
+                }else{
+                    token = new IDToken(keywor_or_id);
+                }
+           }else if(current_char == 'r'){
+               // return
+                do{
+                    keywor_or_id += current_char;
+                    current_char = scanner.move();
+                }while (check_is_valid_char(current_char)||check_is_number(current_char)||current_char=='_');
+
+                if(keywor_or_id == "return"){
+                    token = new Token(K_RETURN);
+                }else{
+                    token = new IDToken(keywor_or_id);
+                }
+           }else{
+                do{
+                    keywor_or_id += current_char;
+                    current_char = scanner.move();
+                }while (check_is_valid_char(current_char)||check_is_number(current_char)||current_char=='_');
                 token = new IDToken(keywor_or_id);
-            }
+           }
 
         }
         // 字符串

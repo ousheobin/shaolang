@@ -28,8 +28,6 @@ add_executable(shaolang
         src/commons/common.h
         src/commons/token.h
         src/commons/token.cpp
-        src/commons/keyword.h
-        src/commons/keyword.cpp
         src/commons/error.cpp
         src/commons/error.h
         src/commons/type_util.cpp
