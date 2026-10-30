@@ -12,6 +12,7 @@
 DataFlowGraph::DataFlowGraph(InterCodeCollection &codeCollection) {
     codeCollection.mark_all_first_inst();
     this -> intercode = codeCollection.get_codes();
+    Block::reset_global_block_id();
     create_new_blocks();
     link_blocks();
 }
@@ -32,10 +33,16 @@ void DataFlowGraph::create_new_blocks() {
             tempCodes.push_back(intercode[index]);
         }
     }
-    all_blocks.push_back(new Block(tempCodes));
+    if(!tempCodes.empty()){
+        all_blocks.push_back(new Block(tempCodes));
+    }
 }
 
 void DataFlowGraph::link_blocks() {
+
+    if(all_blocks.empty()){
+        return;
+    }
 
     for (unsigned int i = 0; i < all_blocks.size()-1; ++i){
         IntermediateInstruct * last=all_blocks[i]->get_inner_instructs()->back();
@@ -98,7 +105,8 @@ void DataFlowGraph::delete_all_next_link(Block *block) {
     }
     for(vector<Block*>::iterator i=delList.begin();i!=delList.end();++i){
         block->next.erase(remove(block->next.begin(), block->next.end(), *i),block->next.end());
-        (*i)->prev.erase(remove((*i)->prev.begin(), (*i)->prev.end(), *i),(*i)->prev.end());
+        // 摘除后继块中指向本块的前驱边，否则残留的死块会参与值集合并
+        (*i)->prev.erase(remove((*i)->prev.begin(), (*i)->prev.end(), block),(*i)->prev.end());
     }
     for(vector<Block*>::iterator i=delList.begin();i!=delList.end();++i){
         delete_all_next_link(*i);
@@ -106,7 +114,28 @@ void DataFlowGraph::delete_all_next_link(Block *block) {
 }
 
 DataFlowGraph::~DataFlowGraph() {
+    for(unsigned long index = 0 ; index < all_blocks.size() ; index ++ ){
+        delete all_blocks[index];
+    }
+    all_blocks.clear();
+    // 指令中的块指针随块一起失效，显式清空避免悬垂引用
+    for(unsigned long index = 0 ; index < intercode.size() ; index ++ ){
+        intercode[index] -> set_block(NULL);
+    }
+}
 
+void DataFlowGraph::link(Block *begin, Block *end) {
+    if(begin == NULL || end == NULL){
+        return;
+    }
+    vector<Block *> & next_blocks = begin -> get_next_block();
+    for(vector<Block *>::iterator iter = next_blocks.begin() ; iter != next_blocks.end() ; iter ++){
+        if(*iter == end){
+            return;
+        }
+    }
+    begin -> add_next_block(end);
+    end -> add_prev_block(begin);
 }
 
 void DataFlowGraph::un_link(Block *begin, Block *end) {

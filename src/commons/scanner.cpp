@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Ou Sheobin on 2018/12/21.
 //
 
@@ -10,19 +10,20 @@ FileScanner::FileScanner(char *file_path) {
         printf("错误，文件: %s 打开失败，请检查路径及文件名或访问权限。",file_path);
     }
     file_name = file_path;
-    current_line_length = 0;
+    current_read_length = 0;
     current_read_position = -1;
     current_line_number = 1;
     current_column_number = 0;
 
     last_char = '\0';
-
+    current_char = '\0';
 }
 
 FileScanner::~FileScanner() {
 
     if( file != NULL){
         fclose(file);
+        file = NULL;
     }
 
 }
@@ -46,14 +47,14 @@ char* FileScanner::get_file_name() {
 char FileScanner::move() {
 
     if(file == NULL){
-        return -1;
+        return EOF_CHAR;
     }
 
-    if(current_read_position == current_line_length - 1){
-        current_line_length = fread(buffer,1,BUFFER_SIZE,file);
-        if(current_line_length < 1 ){
-            current_line_length = -1;
-            buffer[0] = -1;
+    if(current_read_position == current_read_length - 1){
+        current_read_length = (int) fread(buffer,1,BUFFER_SIZE,file);
+        if(current_read_length < 1 ){
+            current_read_length = -1;
+            buffer[0] = EOF_CHAR;
         }
         current_read_position = -1;
     }
@@ -71,7 +72,8 @@ char FileScanner::move() {
         current_column_number = 0;
     }
 #endif
-    if(current_scan_ch > 0){
+    // 只有读完文件才关闭句柄；非 ASCII 字节（如 UTF-8 注释）只是普通字符
+    if(current_scan_ch != EOF_CHAR){
         current_column_number ++;
     }else{
         fclose(file);
@@ -81,15 +83,4 @@ char FileScanner::move() {
     this->current_char = current_scan_ch;
 
     return current_char;
-}
-
-char FileScanner::scan_and_move(char target) {
-
-    if(!target){
-        return false;
-    }
-
-    this -> move();
-    return this->current_char == target;
-
 }

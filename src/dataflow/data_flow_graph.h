@@ -29,6 +29,7 @@ public:
     ~DataFlowGraph();
 
     void un_link(Block * begin,Block * end);
+    void link(Block * begin,Block * end);
 
     string to_string();
 

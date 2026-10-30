@@ -67,7 +67,7 @@ Variable *IRGenerator::generate_function_call(Function *fun, vector<Variable *> 
     if(fun==NULL){
         return NULL;
     }
-    for (int i = args->size() - 1; i >= 0 ; ++i) {
+    for (int i = (int)args->size() - 1; i >= 0 ; --i) {
         generate_function_param(args->at(i));
     }
 
@@ -309,7 +309,7 @@ Variable *IRGenerator::generate_minus(Variable *var) {
     }
     Variable * tmpStore = new Variable(symbolTable->get_current_scope_path(),TK_INT, false);
     symbolTable -> add_variable(tmpStore);
-    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_MINUS,var));
+    symbolTable -> add_inter_instruct(new IntermediateInstruct(OP_MINUS,tmpStore,var));
     return tmpStore;
 }
 
@@ -419,18 +419,20 @@ void IRGenerator::generate_continue() {
 }
 
 void IRGenerator::generate_return(Variable * return_var) {
-    if(return_var == NULL){
-        return;
-    }
     Function *fun = symbolTable->get_current_function();
-    if((return_var->is_void() && fun->get_type()!=TK_VOID) || (return_var->is_basic_type()&&fun->get_type()==TK_VOID)){
-        SE_ERROR(semanticErrorHints[RETURN_TYPE_NOT_MATCH]);
+    if(fun == NULL){
         return;
     }
     IntermediateInstruct* returnPoint=fun->get_return_point();
-    if( return_var ->is_void() ){
+    if(return_var == NULL || return_var->is_void() ){
+        if(fun->get_type()!=TK_VOID){
+            SE_ERROR(semanticErrorHints[RETURN_TYPE_NOT_MATCH]);
+        }
         symbolTable -> add_inter_instruct( new IntermediateInstruct(OP_RETURN,returnPoint));
     }else{
+        if(fun->get_type()==TK_VOID){
+            SE_ERROR(semanticErrorHints[RETURN_TYPE_NOT_MATCH]);
+        }
         symbolTable -> add_inter_instruct( new IntermediateInstruct(OP_RETURN_WITH_VAL,returnPoint,return_var));
     }
 }

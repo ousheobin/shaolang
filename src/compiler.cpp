@@ -36,4 +36,10 @@ Compiler::~Compiler() {
     if(scanner){
         delete scanner;
     }
+    if(irGenerator){
+        delete irGenerator;
+    }
+    if(symbolTable){
+        delete symbolTable;
+    }
 }

@@ -99,14 +99,16 @@ void Parser::segment() {
         }
         LexicalType varType =type();
         function_definition(varType);
+    }else if(IS(ID)){
+        recovery(0,TYPE_LOST,TYPE_ERROR);
+        symbolTable->add_variable(value_definition(LexicalType::TK_VOID));
+    }else if(IS(L_BRACKET)){
+        recovery(0,TYPE_LOST,TYPE_ERROR);
+        function_definition(TK_VOID);
     }else{
-        if(IS(ID)){
-            recovery(0,TYPE_LOST,TYPE_ERROR);
-            value_definition(LexicalType::TK_VOID);
-        }else if(IS(L_BRACKET)){
-            recovery(0,TYPE_LOST,TYPE_ERROR);
-            function_definition(TK_VOID);
-        }
+        // 顶层无法识别的记号：报告并消耗一个记号，保证解析始终取得进展
+        SYNTAX_ERROR(syntaxErrorHints[TYPE_ERROR]);
+        move();
     }
 }
 
@@ -216,8 +218,8 @@ void Parser::parameter(vector<Variable *> &parameters) {
     if(ALL_TYPES){
         Variable * var = para_data();
         symbolTable -> add_variable(var);
-        para_list(parameters);
         parameters.push_back(var);
+        para_list(parameters);
     }
 }
 
@@ -274,6 +276,7 @@ void Parser::function_content(Function *fun) {
  * <BLOCK>-><L_BRACE> <SUB_PROGRAM> <R_BRACE>
  */
 void Parser::block() {
+    symbolTable->enter_new_scope();
     if(!check_and_move(L_BRACE)){
         recovery(ALL_TYPES||ALL_STATEMENT_KW,L_BRACE_LOST,L_BRACE_ERROR);
     }
@@ -281,6 +284,7 @@ void Parser::block() {
     if(!check_and_move(R_BRACE)){
         recovery(ALL_TYPES||IS(SUB)OR(END),R_BRACE_LOST,R_BRACE_ERROR);
     }
+    symbolTable->exit_current_scope();
 }
 
 /**
@@ -387,7 +391,6 @@ void Parser::statement() {
  * <WHILE_STATEMENT>-><KW_WHILE> <L_PARENTHESE><ALL_EXPR><R_PARENTHESE><BLOCK>
  */
 void Parser::while_statement() {
-    symbolTable->enter_new_scope();
     IntermediateInstruct * while_enter, * while_exit;
     irGenerator -> generate_while_head(while_enter,while_exit);
     if(!check_and_move(K_WHILE)){
@@ -403,14 +406,12 @@ void Parser::while_statement() {
     }
     block();
     irGenerator -> generate_while_tail(while_enter,while_exit);
-    symbolTable->exit_current_scope();
 }
 
 /**
  * <IF_STATEMENT> -> <KW_IF> <L_PARENTHESE><EXPR><R_PARENTHESE><BLOCK><ELSE_STATEMENT>
  */
 void Parser::if_statement() {
-    symbolTable->enter_new_scope();
     if(!check_and_move(K_IF)){
         recovery(IS(L_PARENTHESE),NONE,NONE);
     }
@@ -434,7 +435,6 @@ void Parser::if_statement() {
     }
 
     irGenerator -> generate_else_head(if_to_else,if_exit);
-    symbolTable -> exit_current_scope();
     else_statement();
     irGenerator -> generate_else_tail(if_exit);
 }
@@ -444,13 +444,11 @@ void Parser::if_statement() {
  */
 void Parser::else_statement() {
     if(check_and_move(K_ELSE)){
-        symbolTable->enter_new_scope();
         if(IS(L_BRACE)){
             block();
         }else{
             statement();
         }
-        symbolTable->exit_current_scope();
     }
 
 }
@@ -738,9 +736,11 @@ Variable * Parser::id_extend(string val_name) {
             recovery(IS(INC)OR(DEC),R_PARENTHESE_LOST,R_PARENTHESE_ERROR);
         }
         Function * function = symbolTable -> get_function(val_name,* args);
-        irGenerator -> generate_function_call(function,args);
+        // 调用的结果数据要作为表达式值参与后续运算
+        variable = irGenerator -> generate_function_call(function,args);
+        delete args;
     }else if(IS(ASSIGN)){
-        id_assgin(val_name);
+        variable = id_assgin(val_name);
     }else{
         variable = symbolTable -> get_variable(val_name);
     }

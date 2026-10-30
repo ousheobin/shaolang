@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Ou Sheobin on 2018/12/21.
 //
 
@@ -11,11 +11,14 @@ class FileScanner{
 
     static const int BUFFER_SIZE = 128;
 
+    // 文件结束哨兵，与 UTF-8 字节不会冲突（UTF-8 中 0xFF 无合法编码）
+    static const char EOF_CHAR = (char)-1;
+
     char    * file_name;
     FILE    * file;
 
     char    buffer[BUFFER_SIZE];
-    size_t  current_line_length;
+    int     current_read_length;
     int     current_read_position;
 
     char    last_char;
@@ -30,7 +33,6 @@ public:
     ~FileScanner();
 
     char move();
-    char scan_and_move(char target);
 
     char * get_file_name();
     char get_current_char();

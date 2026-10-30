@@ -50,6 +50,7 @@ void IntermediateInstruct::init() {
     rightArg = NULL;
     jumpTarget = NULL;
     function = NULL;
+    block = NULL;
     first = false;
 }
 
@@ -189,6 +190,11 @@ string IntermediateInstruct::display() {
         case OP_JMP_FALSE: ss <<"if "<<leftArg->get_value_display()<<" no true jmp to "<<jumpTarget->label.c_str()<<endl;break;
         case OP_JMP_NEQ: ss <<"if "<<leftArg->get_value_display()<<" != "<<rightArg->get_value_display()<<" jmp to "<<jumpTarget->label.c_str()<<endl;break;
         case OP_ARG: ss <<"arg "<<leftArg->get_value_display()<<endl;break;
+        case OP_LEA: ss <<resultVar->get_value_display()<<" = &"<<leftArg->get_value_display()<<endl;break;
+        case OP_PTR_GET: ss <<resultVar->get_value_display()<<" = *"<<leftArg->get_value_display()<<endl;break;
+        case OP_PTR_SET: ss <<"*"<<leftArg->get_value_display()<<" = "<<rightArg->get_value_display()<<endl;break;
+        case OP_READ: ss <<"read "<<resultVar->get_value_display()<<endl;break;
+        case OP_PRINT: ss <<"print "<<leftArg->get_value_display()<<endl;break;
         case OP_PROC: ss <<function->get_function_name().c_str()<<"("<<endl;break;
         case OP_CALL: ss <<resultVar->get_value_display()<<" = "<<function->get_function_name().c_str()<<"()"<<endl;break;
         case OP_RETURN: ss <<"goto "<<jumpTarget->label.c_str()<<endl;break;

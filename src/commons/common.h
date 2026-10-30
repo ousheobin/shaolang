@@ -24,7 +24,8 @@ enum LexicalType {
     LEA, ASSIGN,
     COMMA, COLON, SEMICOLON,
     LEFT_STREAM,RIGHT_STREAM,
-    L_PARENTHESE, R_PARENTHESE, L_BRACKET, R_BRACKET, L_BRACE, R_BRACE
+    L_PARENTHESE, R_PARENTHESE, L_BRACKET, R_BRACKET, L_BRACE, R_BRACE,
+    LEXICAL_TYPE_COUNT
 };
 
 const string typeName[] = {
@@ -45,6 +46,10 @@ const string typeName[] = {
         "(",")","[","]","{","}"
 };
 
+static_assert(sizeof(typeName)/sizeof(typeName[0]) == LEXICAL_TYPE_COUNT,
+              "typeName 必须与 LexicalType 的每一项按顺序一一对应");
+
+
 enum syntaxError{
     NONE,
     TYPE_LOST,TYPE_ERROR,
@@ -59,7 +64,8 @@ enum syntaxError{
     SEMICOLON_LOST,SEMICOLON_ERROR,
     COLON_LOST,COLON_ERROR,
     KW_WHILE_LOST,KW_WHILE_ERROR,
-    VALUE_DEFINE_ERROR,CONSTRANT_DEFINE_ERROR
+    VALUE_DEFINE_ERROR,CONSTRANT_DEFINE_ERROR,
+    SYNTAX_ERROR_COUNT
 };
 
 const string syntaxErrorHints[] ={
@@ -78,6 +84,10 @@ const string syntaxErrorHints[] ={
         "缺少while关键字","while关键字处于不正确位置，或无法识别",
         "变量或函数定义不正确","常量定义处于不正确位置，或无法识别"
 };
+
+static_assert(sizeof(syntaxErrorHints)/sizeof(syntaxErrorHints[0]) == SYNTAX_ERROR_COUNT,
+              "syntaxErrorHints 必须与 syntaxError 的每一项按顺序一一对应");
+
 
 enum semanticError{
     VARIABLE_DUPLICATE,
@@ -101,7 +111,8 @@ enum semanticError{
     CONTINUE_POSITION_INVAILD,
     RETURN_TYPE_NOT_MATCH,
     FUNCTION_DECLARE_CONFLICT_WARN,
-    FUNCTION_TYPE_NOT_MATCH_WARN
+    FUNCTION_TYPE_NOT_MATCH_WARN,
+    SEMANTIC_ERROR_COUNT
 };
 
 const string semanticErrorHints[] = {
@@ -129,6 +140,10 @@ const string semanticErrorHints[] = {
         "函数返回类型定义与声明冲突"
 };
 
+static_assert(sizeof(semanticErrorHints)/sizeof(semanticErrorHints[0]) == SEMANTIC_ERROR_COUNT,
+              "semanticErrorHints 必须与 semanticError 的每一项按顺序一一对应");
+
+
 enum InterCodeOperator{
     OP_EMPTY_INST,
     OP_DECLARE, OP_ENTER, OP_EXIT,
@@ -140,7 +155,9 @@ enum InterCodeOperator{
     OP_JMP,
     OP_JMP_TRUE,OP_JMP_FALSE,OP_JMP_NEQ,
     OP_ARG,
-    OP_PROC, OP_CALL, OP_RETURN, OP_RETURN_WITH_VAL
+    OP_PROC, OP_CALL, OP_RETURN, OP_RETURN_WITH_VAL,
+    OP_READ, OP_PRINT,
+    OP_CODE_COUNT
 };
 
 const string interOpHints[] = {
@@ -154,8 +171,13 @@ const string interOpHints[] = {
         "JMP",
         "JMP_TRUE","JMP_FALSE","JMP_NEQ",
         "ARG",
-        "PROC", "CALL", "RETURN", "RETURN_WITH_VAL"
+        "PROC", "CALL", "RETURN", "RETURN_WITH_VAL",
+        "READ", "PRINT"
 };
+
+static_assert(sizeof(interOpHints)/sizeof(interOpHints[0]) == OP_CODE_COUNT,
+              "interOpHints 必须与 InterCodeOperator 的每一项按顺序一一对应");
+
 
 class Variable;
 class Function;

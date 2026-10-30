@@ -10,7 +10,9 @@
 class TypeUtil{
 public:
     static bool type_check(Variable * left,Variable * right);
+    static LexicalType canonical_type(LexicalType type);
     static Variable * get_offset_step(Variable * var);
+    static int type_size(Variable * var);
 };
 
 #endif //SHAOLANG_TYPE_UTIL_H

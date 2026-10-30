@@ -2,13 +2,13 @@
 // Created by Ou Sheobin on 2019/2/28.
 //
 
+#ifndef SHAOLANG_PARSER_H
+#define SHAOLANG_PARSER_H
+
 #include "lexer.h"
 #include "symbols/function.h"
 #include "symbols/symbol_table.h"
 #include "ir_generator.h"
-
-#ifndef SHAOLANG_PARSER_H
-#define SHAOLANG_PARSER_H
 
 class Parser
 {

@@ -11,10 +11,11 @@ Variable * SymbolTable::oneVariable = new Variable(1);
 Variable * SymbolTable::fourVariable = new Variable(4);
 Variable * SymbolTable::eightVariable = new Variable(8);
 
-string SymbolTable::SPECIAL_VAR_NAME_STARTER = "<<";
-
 SymbolTable::SymbolTable(){
+    current_function = NULL;
     current_scope_id = 0;
+    // 文件级作用域本身就是一个作用域层级，全局变量的 scope path 为 [0]
+    scope_vector.push_back(current_scope_id);
     voidVariable = new Variable();
 }
 
@@ -31,7 +32,10 @@ void SymbolTable::enter_new_scope() {
 }
 
 void SymbolTable::exit_current_scope() {
-    scope_vector.pop_back();
+    // 文件级作用域不参与弹出，避免错误恢复路径上的失衡弹出
+    if(scope_vector.size() > 1){
+        scope_vector.pop_back();
+    }
     if(current_function){
         current_function -> exit_esp_scope();
     }
@@ -51,39 +55,50 @@ void SymbolTable::set_ir_generator(IRGenerator *irGen) {
 
 void SymbolTable::add_variable(Variable * variable) {
 
+    // 错误恢复路径上语法分析可能返回空定义
+    if(variable == NULL){
+        return;
+    }
+
     string name = variable->get_variable_name();
     if(name.empty()){
         return;
     }
 
-    if(variableTable.find(name)==variableTable.end()){
-        vector<Variable*> * variableVec = new vector<Variable *>();
-        variableVec -> push_back(variable);
+    vector<Variable *> * list = NULL;
+    std::unordered_map<string,vector<Variable *> *,str_hash>::iterator found = variableTable.find(name);
+    if(found == variableTable.end()){
+        list = new vector<Variable *>();
+        variableTable[name] = list;
         variable_define_order_list.push_back(name);
-        variableTable[variable->get_variable_name()] = variableVec;
     }else{
-        vector<Variable*> & list = * variableTable[name];
-        int iter_index = 0;
+        list = found->second;
+    }
+
+    if(variable->is_constant_value()){
+        // 常量字面量按出现次数各自保存，不参与重复定义检查
+        list->push_back(variable);
+    }else{
         int last_scope = variable -> get_scope_path().back();
-        while (iter_index<list.size()){
-            if(list[iter_index]->get_scope_path().back() == last_scope){
-                break;
-            }
+        unsigned long iter_index = 0;
+        while (iter_index < list->size() && (*list)[iter_index]->get_scope_path().back() != last_scope){
             iter_index ++;
         }
-        if(iter_index == list.size() || name.compare(0, SPECIAL_VAR_NAME_STARTER.size(), SPECIAL_VAR_NAME_STARTER)==0){
-            list.push_back(variable);
+        if(iter_index == list->size()){
+            list->push_back(variable);
         }else{
             SE_ERROR(semanticErrorHints[VARIABLE_DUPLICATE]);
             delete variable;
+            return;
         }
     }
 
+    if(variable->get_scope_path().size() == 1 && !variable->is_literal_value()){
+        globalVariables.push_back(variable);
+    }
+
     if(irGenerator != NULL){
-        bool not_constraint = irGenerator -> generate_variable_init(variable);
-        if(current_function != NULL && not_constraint ){
-            // TODO: Update status in curr function
-        }
+        irGenerator -> generate_variable_init(variable);
     }
 
 }
@@ -135,15 +150,17 @@ void SymbolTable::define_function(Function *fun) {
     }else {
         Function * existsFunction = functionTable[name];
         if(!existsFunction->is_declare()){
+            // 重复定义：报告错误，函数体照常解析但不并入已存在的函数
             SE_ERROR(semanticErrorHints[FUNCTION_DUPLICATE]);
+            current_function = fun;
         }else{
             if(!existsFunction->equals(fun)){
                 SE_ERROR(semanticErrorHints[FUNCTION_DUPLICATE]);
             }
             existsFunction -> disable_declare_flag();
+            delete fun;
+            current_function = existsFunction;
         }
-        delete fun;
-        current_function = existsFunction;
     }
     irGenerator -> generate_function_head(current_function);
 
@@ -192,22 +209,8 @@ void SymbolTable::show_all_code() {
     }
 }
 
-vector<Variable *> * SymbolTable::get_global_variables() {
-    vector<Variable *>  * all_variables = new vector<Variable *>;
-    for(unsigned long index = 0 ; index < variable_define_order_list.size() ; index ++ ){
-        string variable_name = variable_define_order_list[index];
-        if(variable_name[0] == '<'){
-            continue;
-        }
-        vector<Variable *> & valVector = * variableTable[variable_name];
-        for (int i = 0; i < valVector.size(); ++i) {
-            if(valVector[i]->get_scope_path().size() == 1){
-                all_variables->push_back(valVector[i]);
-                break;
-            }
-        }
-    }
-    return all_variables;
+const vector<Variable *> & SymbolTable::get_global_variables() {
+    return globalVariables;
 }
 
 Variable* SymbolTable::get_true_var() {

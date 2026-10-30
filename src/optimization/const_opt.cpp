@@ -16,41 +16,37 @@ ConstPropagation::ConstPropagation(DataFlowGraph *dfg, SymbolTable *symbolTable,
     this -> dataFlowGraph = dfg;
     this -> symbolTable = symbolTable;
 
-    globalVariables = symbolTable -> get_global_variables();
+    globalVariables = &symbolTable -> get_global_variables();
+
     int index = 0;
+    // 同一变量在相邻两次（不同函数）分析中会残留上一次的编号，先统一复位
+    for(unsigned long i = 0 ; i < globalVariables->size() ; i ++ ){
+        globalVariables->at(i) -> opt_index = -1;
+    }
+    for(unsigned long i = 0 ; i < parameterVars.size() ; i ++ ){
+        parameterVars[i] -> opt_index = -1;
+    }
+    for(unsigned long i = 0 ; i < dfg->intercode.size() ; i ++ ){
+        if(dfg->intercode[i]->is_declare()){
+            dfg->intercode[i] -> getLeftArg() -> opt_index = -1;
+        }
+    }
+
     for(unsigned long i = 0 ; i < globalVariables->size() ; i ++ ){
         Variable * variable = globalVariables->at(i);
-        variable -> opt_index = index++;
-        variables.push_back(variable);
-        long value = UNDEF;
-        if(!variable->is_basic_type()){
-            value = NAC;
-        }else if(variable->is_init()){
-            value = variable -> get_integer_const_val();
-        }
-        boundsValueSet.push_back(value);
+        register_variable(variable, initial_lattice_value(variable), index);
     }
 
     for(unsigned long i = 0 ; i < parameterVars.size() ; i ++ ){
-        Variable * variable= parameterVars[i];
-        variable -> opt_index = index++;
-        variables.push_back(variable);
-        boundsValueSet.push_back(NAC);
+        // 形参的初值来自调用点，本次分析内不可知
+        register_variable(parameterVars[i], NAC, index);
     }
 
     for(unsigned long i = 0 ; i < dfg->intercode.size() ; i ++ ){
         IntermediateInstruct * instruct = dfg->intercode[i];
         if(instruct->is_declare()){
             Variable * variable = instruct -> getLeftArg();
-            variable -> opt_index = index ++;
-            variables.push_back(variable);
-            long value = UNDEF;
-            if(!variable->is_basic_type()){
-                value = NAC;
-            }else if(variable->is_init()){
-                value = variable -> get_integer_const_val();
-            }
-            boundsValueSet.push_back(value);
+            register_variable(variable, initial_lattice_value(variable), index);
         }
     }
 
@@ -58,6 +54,29 @@ ConstPropagation::ConstPropagation(DataFlowGraph *dfg, SymbolTable *symbolTable,
         initValueSet.push_back(UNDEF);
     }
 
+}
+
+bool ConstPropagation::is_int_literal(Variable * variable) {
+    return variable != NULL && variable -> is_literal_value() && variable -> get_type() != C_STRING;
+}
+
+long ConstPropagation::initial_lattice_value(Variable * variable) {
+    if(!variable->is_basic_type()){
+        return NAC;
+    }else if(variable->is_init()){
+        return variable -> get_int_value();
+    }
+    return UNDEF;
+}
+
+void ConstPropagation::register_variable(Variable * variable, long lattice_value, int & index) {
+    if(variable->opt_index != -1){
+        // 本次分析中已经登记过
+        return;
+    }
+    variable -> opt_index = index ++;
+    variables.push_back(variable);
+    boundsValueSet.push_back(lattice_value);
 }
 
 void ConstPropagation::optimize() {
@@ -162,8 +181,8 @@ void ConstPropagation::fx(IntermediateInstruct * instruct, vector<long> & in_val
         long tmp = NAC;
         if( op == OP_ASSIGN || op == OP_MINUS || op == OP_NOT ){
             if( left_arg -> opt_index == -1 ){
-                if(left_arg->is_basic_type()){
-                    tmp = left_arg->get_integer_const_val();
+                if(is_int_literal(left_arg)){
+                    tmp = left_arg->get_int_value();
                 }
             }else{
                 tmp=in_vals[left_arg->opt_index];
@@ -178,15 +197,20 @@ void ConstPropagation::fx(IntermediateInstruct * instruct, vector<long> & in_val
         } else if( op >= OP_ADD && op <= OP_OR){
             long left_val = UNDEF ,right_val = UNDEF;
             if(left_arg -> opt_index == -1){
-                if( left_arg -> is_basic_type()){
-                    left_val = left_arg -> get_integer_const_val();
+                if(is_int_literal(left_arg)){
+                    left_val = left_arg -> get_int_value();
+                }else{
+                    // 非常量的字面量（例如字符串常量）不是整型常量
+                    left_val = NAC;
                 }
             }else{
                 left_val = in_vals[left_arg->opt_index];
             }
             if(right_arg->opt_index==-1){
-                if(right_arg->is_basic_type()){
-                    right_val = right_arg->get_integer_const_val();
+                if(is_int_literal(right_arg)){
+                    right_val = right_arg->get_int_value();
+                }else{
+                    right_val = NAC;
                 }
             }else{
                 right_val = in_vals[right_arg->opt_index];
@@ -233,14 +257,20 @@ void ConstPropagation::fx(IntermediateInstruct * instruct, vector<long> & in_val
                     tmp = left_val || right_val;
                 }
             }
-        } else if(op==OP_PTR_GET){
-            tmp = NAC;
         }
-        out_vals[storePoint->opt_index] = tmp;
+        if(storePoint != NULL && storePoint -> opt_index != -1){
+            out_vals[storePoint->opt_index] = tmp;
+        }
     }
     else if( op==OP_PTR_SET || (op==OP_ARG && !left_arg->is_basic_type())){
         for(unsigned long i=0;i<out_vals.size(); i ++){
             out_vals[i]=NAC;
+        }
+    }
+    else if(op==OP_LEA || op==OP_PTR_GET){
+        // 取地址与解引用的结果不可能是整型常量
+        if(storePoint != NULL && storePoint -> opt_index != -1){
+            out_vals[storePoint->opt_index] = NAC;
         }
     }
     else if(op==OP_PROC){
@@ -252,7 +282,9 @@ void ConstPropagation::fx(IntermediateInstruct * instruct, vector<long> & in_val
         for(unsigned long i=0;i<globalVariables->size();++i){
             out_vals[globalVariables->at(i)->opt_index]=NAC;
         }
-        out_vals[storePoint->opt_index]=NAC;
+        if(storePoint != NULL && storePoint -> opt_index != -1){
+            out_vals[storePoint->opt_index]=NAC;
+        }
     }
 
     instruct->set_in_vals(in_vals);
@@ -271,6 +303,14 @@ void ConstPropagation::algebra_simplify() {
                 Variable * left_arg   = instruct -> getLeftArg();
                 Variable * right_arg  = instruct -> getRightArg();
 
+                // 入口块不参与迭代，未参与分析的指令没有值集可用
+                if(instruct->get_out_vals().empty() || instruct->get_in_vals().empty()){
+                    continue;
+                }
+                if(storePoint == NULL || storePoint -> opt_index < 0){
+                    continue;
+                }
+
                 long result = instruct->get_out_vals()[storePoint->opt_index];
                 if(result != UNDEF && result != NAC){
                     Variable * newValue = new Variable((int)result);
@@ -279,13 +319,21 @@ void ConstPropagation::algebra_simplify() {
                 } else if(op>=OP_ADD && op<=OP_OR && (op!=OP_ASSIGN && op != OP_MINUS && op != OP_NOT)){
                     long left_val = UNDEF ,right_val = UNDEF;
 
-                    if(left_arg -> opt_index == -1 && left_arg -> is_basic_type()){
-                        left_val = left_arg -> get_integer_const_val();
+                    if(left_arg -> opt_index == -1){
+                        if(is_int_literal(left_arg)){
+                            left_val = left_arg -> get_int_value();
+                        }else{
+                            left_val = NAC;
+                        }
                     }else{
                         left_val = instruct->get_in_vals()[left_arg->opt_index];
                     }
-                    if(right_arg->opt_index==-1 && right_arg->is_basic_type()){
-                        right_val = right_arg->get_integer_const_val();
+                    if(right_arg->opt_index==-1){
+                        if(is_int_literal(right_arg)){
+                            right_val = right_arg->get_int_value();
+                        }else{
+                            right_val = NAC;
+                        }
                     }else{
                         right_val = instruct->get_in_vals()[right_arg->opt_index];
                     }
@@ -396,54 +444,75 @@ void ConstPropagation::algebra_simplify() {
     }
 }
 
+long ConstPropagation::lattice_value_of(Variable * variable, IntermediateInstruct * instruct, bool use_in_vals) {
+    if(variable == NULL){
+        return NAC;
+    }
+    if(variable -> opt_index == -1){
+        return is_int_literal(variable) ? variable -> get_int_value() : NAC;
+    }
+    vector<long> values = use_in_vals ? instruct -> get_in_vals() : instruct -> get_out_vals();
+    if(variable -> opt_index < 0 || (unsigned long)variable -> opt_index >= values.size()){
+        return NAC;
+    }
+    return values[variable -> opt_index];
+}
+
 void ConstPropagation::condition_jump_simplify() {
-    for (unsigned long blockIndex = 0; blockIndex < dataFlowGraph -> all_blocks.size(); blockIndex ++) {
-        vector<IntermediateInstruct *> * insts = dataFlowGraph->all_blocks[blockIndex]->get_inner_instructs();
-        for(vector<IntermediateInstruct*>::iterator iter = insts -> begin(), iter_next = iter;
-        iter != insts->end() ; iter = iter_next){
-            iter_next ++;
-            IntermediateInstruct * instruct = * iter;
-            InterCodeOperator op = instruct ->getInterCodeOperator();
-            if(instruct->is_jmcond()){
-                IntermediateInstruct * targetInst = instruct->getJumpTarget();
-                Variable * jumpArg = instruct -> getLeftArg();
-                long condiction_value = UNDEF;
-                if( jumpArg -> opt_index == -1 ){
-                    if( jumpArg -> is_basic_type()){
-                        condiction_value = jumpArg -> get_integer_const_val();
-                    }
-                }else{
-                    condiction_value = instruct->get_in_vals()[jumpArg->opt_index];
-                }
-                if(condiction_value == NAC || condiction_value == UNDEF){
+    unsigned long block_amount = dataFlowGraph -> all_blocks.size();
+    for (unsigned long blockIndex = 0; blockIndex < block_amount; blockIndex ++) {
+        Block * block = dataFlowGraph -> all_blocks[blockIndex];
+        vector<IntermediateInstruct *> * insts = block -> get_inner_instructs();
+        // 指令被删除后块内元素前移，用下标遍历保证正确推进
+        unsigned long pos = 0;
+        while(pos < insts -> size()){
+            IntermediateInstruct * instruct = insts -> at(pos);
+            if(! instruct -> is_jmcond()){
+                pos ++;
+                continue;
+            }
+            IntermediateInstruct * targetInst = instruct -> getJumpTarget();
+            if(targetInst == NULL || targetInst -> get_block() == NULL || instruct -> get_in_vals().empty()){
+                pos ++;
+                continue;
+            }
+            InterCodeOperator op = instruct -> getInterCodeOperator();
+            long condition_value = UNDEF;
+            if(op == OP_JMP_NEQ){
+                long left_value  = lattice_value_of(instruct -> getLeftArg(),instruct,true);
+                long right_value = lattice_value_of(instruct -> getRightArg(),instruct,true);
+                if(left_value == UNDEF || right_value == UNDEF || left_value == NAC || right_value == NAC){
+                    pos ++;
                     continue;
                 }
-                if( op == OP_JMP_TRUE){
-                    if(condiction_value == 0){
-                        instruct -> get_block() -> get_inner_instructs() ->erase(iter);
-                        if( dataFlowGraph -> all_blocks[blockIndex+1] != targetInst -> get_block()){
-                            dataFlowGraph -> un_link(instruct->get_block(),targetInst->get_block());
-                        }
-                    }
-                    else{
-                        instruct -> optimise_jmp(OP_JMP,targetInst);
-                        if( dataFlowGraph -> all_blocks[blockIndex+1] != targetInst -> get_block()){
-                            dataFlowGraph -> un_link(instruct->get_block(),dataFlowGraph->all_blocks[blockIndex+1]);
-                        }
-                    }
+                condition_value = (left_value != right_value);
+            }else{
+                condition_value = lattice_value_of(instruct -> getLeftArg(),instruct,true);
+            }
+            if(condition_value == NAC || condition_value == UNDEF){
+                pos ++;
+                continue;
+            }
+            bool jump_taken = (op == OP_JMP_TRUE) ? (condition_value != 0) : (condition_value == 0);
+            Block * target = targetInst -> get_block();
+            // 三地址码按线性布局生成，紧邻的下一块就是本块的顺序后继
+            Block * fallthrough = (blockIndex + 1 < block_amount) ? dataFlowGraph -> all_blocks[blockIndex + 1] : NULL;
+
+            if(jump_taken){
+                if(target == fallthrough){
+                    // 恒跳转到顺序下一条指令，删除跳转后即可自然落入下一块
+                    insts -> erase(insts -> begin() + pos);
+                    dataFlowGraph -> link(block,fallthrough);
+                }else{
+                    instruct -> optimise_jmp(OP_JMP,targetInst);
+                    pos ++;
                 }
-                else if(op== OP_JMP_FALSE){
-                    if(condiction_value != 0 ){
-                        instruct -> get_block() -> get_inner_instructs() ->erase(iter);
-                        if( dataFlowGraph -> all_blocks[blockIndex+1] != targetInst -> get_block()){
-                            dataFlowGraph -> un_link(instruct->get_block(),targetInst->get_block());
-                        }
-                    } else{
-                        instruct -> optimise_jmp(OP_JMP,targetInst);
-                        if( dataFlowGraph -> all_blocks[blockIndex+1] != targetInst -> get_block()){
-                            dataFlowGraph -> un_link(instruct->get_block(),dataFlowGraph->all_blocks[blockIndex+1]);
-                        }
-                    }
+            }else{
+                insts -> erase(insts -> begin() + pos);
+                // 先补上顺序边再摘除永不成立的跳转边，避免可达性分析把活代码当作死代码删除
+                dataFlowGraph -> link(block,fallthrough);
+                if(target != fallthrough){
+                    dataFlowGraph -> un_link(block,target);
                 }
             }
         }

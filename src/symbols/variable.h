@@ -35,7 +35,6 @@ private:
     string ptr_initial_value;
     Variable * ptr;
 
-    int size_of_variable;
     int frame_offsize;
 
     void set_variable_name(const string &variable_name);
@@ -52,11 +51,6 @@ public:
 
     // DFG Opt Fields
     int opt_index;
-    bool is_live;
-
-    // Reg assignment
-    int register_id;
-    bool in_main_memory;
 
     // Normal Var
     Variable(string var_name, vector<int> scope,LexicalType type,Variable * init_value);
@@ -76,20 +70,19 @@ public:
     // Type
     LexicalType get_type();
     bool is_char();
-    bool is_char_pointer();
     bool is_ptr();
     bool is_arr();
     bool is_void();
     bool is_refference();
     bool is_basic_type();
     bool is_literal_value();
+    bool is_constant_value();
 
     int get_int_value();
 
     // Common
     string get_variable_name();
     string get_ptr_variable_name();
-    string get_raw_string_value();
     string get_string_value();
 
     // Pointer
@@ -100,8 +93,7 @@ public:
     bool is_left_var();
     void set_init_value(Variable * val);
     void set_frame_offset(int offset);
-    int get_frame_offset(int offset);
-    int get_size();
+    int get_frame_offset();
 
     // To String
     string get_value_display();
@@ -112,8 +104,6 @@ public:
 
     // DFG
     bool is_init();
-    bool not_a_const();
-    int get_integer_const_val();
 
 };
 #endif //SHAOLANG_VARIABLE_H

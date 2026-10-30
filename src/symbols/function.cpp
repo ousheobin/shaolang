@@ -7,6 +7,8 @@
 
 #include "function.h"
 #include "variable.h"
+#include "commons/argument.h"
+#include "commons/type_util.h"
 #include "optimization/const_opt.h"
 #include "dataflow/data_flow_graph.h"
 #include "dataflow/block.h"
@@ -17,6 +19,7 @@ Function::Function(LexicalType lexicalType, string func_name, vector<Variable *>
     parameters = parameter_list;
     has_declare = false;
     is_opt = false;
+    return_point = NULL;
 }
 
 string Function::get_function_name() {
@@ -39,8 +42,9 @@ bool Function::equals(vector<Variable *> source_para) {
         return false;
     }
     unsigned long size = parameters.size();
-    for (int i = 0; i < size; ++i) {
-        if(source_para[i]->get_type() !=  parameters[i]->get_type()){
+    for (unsigned long i = 0; i < size; ++i) {
+        // 形参由实参初始化，兼容规则与赋值一致
+        if(!TypeUtil::type_check(parameters[i],source_para[i])){
             return false;
         }
     }
@@ -93,11 +97,14 @@ void Function::do_optimize(SymbolTable * symbolTable) {
         return;
     }
     DataFlowGraph * dfg = new DataFlowGraph(interCodeCollection);
-    // cout << dfg -> to_string();
     ConstPropagation * constPropagation = new ConstPropagation(dfg,symbolTable,parameters);
     constPropagation -> optimize();
     dfg -> write_opt_code(optCode);
-    cout << dfg -> to_string();
+    if(CompilerArguments::showDataFlowBlocks){
+        std::cout << dfg -> to_string();
+    }
+    delete constPropagation;
+    delete dfg;
     is_opt = true;
 }
 

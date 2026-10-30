@@ -26,7 +26,6 @@ using namespace stdext;
 
 class SymbolTable {
 private:
-    static string SPECIAL_VAR_NAME_STARTER;
     struct str_hash{
         size_t operator()(const string& str) const {
             std::hash<std::string> hash_struct;
@@ -40,6 +39,8 @@ private:
     std::unordered_map<string,vector<Variable *> *,str_hash> variableTable;
     std::unordered_map<string,Function *,str_hash> functionTable;
     std::unordered_map<string,Variable *,str_hash> constStringTable;
+    // 作用域深度为 1 的变量（真正的文件级全局变量），按定义顺序保存
+    vector<Variable *> globalVariables;
     Function * current_function;
     int current_scope_id;
     vector<int> scope_vector;
@@ -67,7 +68,7 @@ public:
     Variable * get_variable(string var_name);
     vector<int> get_current_scope_path();
     Variable * get_true_var();
-    vector<Variable *> * get_global_variables();
+    const vector<Variable *> & get_global_variables();
 
     // Function
     void declare_function(Function *fun);

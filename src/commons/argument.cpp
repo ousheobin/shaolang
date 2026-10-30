@@ -1,4 +1,4 @@
-﻿//
+//
 // Created by Ou Sheobin on 2019/1/26.
 //
 
@@ -6,3 +6,4 @@
 
 bool CompilerArguments::showHelp = false;
 bool CompilerArguments::showLexicalResult = false;
+bool CompilerArguments::showDataFlowBlocks = false;

@@ -18,12 +18,17 @@ class ConstPropagation{
     DataFlowGraph * dataFlowGraph;
 
     vector<Variable * > variables;
-    vector<Variable * > * globalVariables;
+    const vector<Variable * > * globalVariables;
 
     vector<long> boundsValueSet;
     vector<long> initValueSet;
 
+    static bool is_int_literal(Variable * variable);
+    static long initial_lattice_value(Variable * variable);
+    void register_variable(Variable * variable, long lattice_value, int & index);
+
     long ux(long left,long right);
+    long lattice_value_of(Variable * variable, IntermediateInstruct * instruct, bool use_in_vals);
     void union_blocks(Block*block);
 
     void fx(IntermediateInstruct * instruct,vector<long>& in_vals,vector<long>& out_vals);

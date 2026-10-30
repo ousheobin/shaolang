@@ -1,12 +1,12 @@
-﻿//
+//
 // Created by Ou Sheobin on 2019/1/26.
 //
 
-#include <string>
-#include <iostream>
-
 #ifndef SHAOLANG_ERROR_H
 #define SHAOLANG_ERROR_H
+
+#include <string>
+#include <iostream>
 
 #include "scanner.h"
 

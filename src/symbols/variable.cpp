@@ -101,6 +101,9 @@ void Variable::init_var_obj() {
     initial_value = NULL;
     ptr = NULL;
 
+    integer_initial_value = 0;
+    char_initial_value = 0;
+
     frame_offsize = 0;
     is_temp_store = false;
 
@@ -143,9 +146,7 @@ bool Variable::is_char() {
     return (type == TK_CHAR);
 }
 
-bool Variable::is_char_pointer() {
-    return (type == TK_CHAR) ;
-}
+
 
 bool Variable::is_ptr() {
     return is_pointer;
@@ -171,6 +172,10 @@ bool Variable::is_literal_value() {
     return is_constraint && is_basic_type();
 }
 
+bool Variable::is_constant_value() {
+    return is_constraint;
+}
+
 string Variable::get_variable_name() {
     return variable_name;
 }
@@ -179,10 +184,7 @@ string Variable::get_ptr_variable_name() {
     return ptr_initial_value;
 }
 
-// TODO: Need finish
-string Variable::get_raw_string_value() {
-    return str_initial_value;
-}
+
 
 string Variable::get_string_value() {
     return str_initial_value;
@@ -208,13 +210,11 @@ void Variable::set_frame_offset(int offset) {
     this->frame_offsize = offset;
 }
 
-int Variable::get_frame_offset(int offset) {
+int Variable::get_frame_offset() {
     return frame_offsize;
 }
 
-int Variable::get_size() {
-    return size_of_variable;
-}
+
 
 string Variable::get_value_display() {
     std::stringstream ss;
@@ -240,11 +240,14 @@ bool Variable::is_init() {
     return already_init;
 }
 
-bool Variable::not_a_const() {
-    return !is_literal_value();
-}
 
-int Variable::get_integer_const_val() {
+
+
+
+int Variable::get_int_value() {
+    if(type == C_CHAR || type == TK_CHAR){
+        return (int)char_initial_value;
+    }
     return integer_initial_value;
 }
 
@@ -259,8 +262,10 @@ bool Variable::check_init() {
         // Use constraint to init the var
         if(initial_value -> get_type() == C_STRING ){
             ptr_initial_value = initial_value -> get_variable_name();
-        }else if(initial_value -> get_type() == C_INTEGER){
-            integer_initial_value = initial_value -> integer_initial_value;
+        }else if(get_type() == TK_CHAR || get_type() == C_CHAR){
+            char_initial_value = (char)initial_value -> get_int_value();
+        }else{
+            integer_initial_value = initial_value -> get_int_value();
         }
         already_init = true;
     }else{

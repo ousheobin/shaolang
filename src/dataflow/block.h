@@ -20,7 +20,6 @@ private:
     vector<IntermediateInstruct *> inner_instructs;
 
     bool already_visited;
-    bool reachable;
 
     vector<long> in_vals;
     vector<long> out_vals;
@@ -29,6 +28,8 @@ public:
 
     vector<Block *> prev;
     vector<Block *> next;
+
+    static void reset_global_block_id();
 
     Block(vector<IntermediateInstruct *> & intercodes);
     string to_string();
@@ -49,8 +50,6 @@ public:
     bool is_already_visited();
     void set_already_visited(bool already_visited);
 
-    bool is_reachable();
-    void set_reachable(bool reachable);
 };
 
 #endif //SHAOLANG_BLOCK_H

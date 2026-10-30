@@ -10,9 +10,12 @@
 
 int Block::global_block_id = 0;
 
+void Block::reset_global_block_id() {
+    global_block_id = 0;
+}
+
 Block::Block(vector<IntermediateInstruct *> & input_instructs) {
     already_visited = false;
-    reachable = true;
     prev.clear();
     next.clear();
     for(unsigned long index = 0 ; index < input_instructs.size() ; index ++){
@@ -90,12 +93,4 @@ bool Block::is_already_visited() {
 
 void Block::set_already_visited(bool already_visited) {
     this -> already_visited = already_visited;
-}
-
-bool Block::is_reachable() {
-    return reachable;
-}
-
-void Block::set_reachable(bool reachable) {
-    this -> reachable = reachable;
 }
