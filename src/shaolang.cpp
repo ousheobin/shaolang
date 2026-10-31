@@ -8,7 +8,11 @@
 #include <vector>
 #include <cstring>
 #include <cstdio>
+#ifdef WINDOWS
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 #include "compiler.h"
 #include "commons/argument.h"
 #include "commons/error.h"
@@ -25,7 +29,11 @@ static string temp_assembly_path(int index){
         base.erase(base.size() - 1);
     }
     stringstream ss;
+#ifdef WINDOWS
+    ss << base << "/shaolang-" << _getpid() << "-" << index << ".s";
+#else
     ss << base << "/shaolang-" << getpid() << "-" << index << ".s";
+#endif
     return ss.str();
 }
 
