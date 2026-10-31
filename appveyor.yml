@@ -15,17 +15,15 @@ install:
 
 before_build:
 - ps: |
-    mkdir build
-    cd build
     if ($env:PLATFORM -eq "x64") {
         $arch = "x64"
     } else {
         $arch = "Win32"
     }
     echo generatorArchitecture=$arch
-    cmake .. -G "Visual Studio 17 2022" -A $arch
+    cmake -S . -B build -G "Visual Studio 17 2022" -A $arch
 
 build_script:
-- cmd: cmake --build build --config %CONFIGURATION% -- /m /v:minimal
+- ps: cmake --build build --config $env:CONFIGURATION -- /m /v:minimal
 
 deploy: off
