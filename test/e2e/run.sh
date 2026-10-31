@@ -26,6 +26,12 @@ case "$(uname -s)" in
     *) NEWLINE=CRLF ;;
 esac
 
+# Windows 上编译器会给产物补 .exe 后缀，用例要按同样的名字找回可执行文件
+EXE_SUFFIX=
+case "$(uname -s)" in
+    *NT*) EXE_SUFFIX=.exe ;;
+esac
+
 # CI 里已经用 CMake 并行构建过，通过 SHAOLANG 传进来，避免每次串行重编全部源码
 S=${SHAOLANG:-}
 if [ -z "$S" ]; then
@@ -80,7 +86,7 @@ fail=0
 
 check() {
     local name=$1 src=$2 expected=$3
-    local exe=$WORK/$name
+    local exe=$WORK/$name$EXE_SUFFIX
     rm -f "$exe"
     # GUARD 为空时要展开成零个词，所以不能加引号
     $GUARD "$S" "$src" -o "$exe" > "$WORK/$name.log" 2>&1
@@ -133,33 +139,48 @@ for i in "${!names[@]}"; do
     check "${names[$i]}" "${srcs[$i]}" "${expects[$i]}"
 done
 
-# 交叉产物只验证到装配层：能生成 ELF aarch64 汇编并被工具链接受即可，
-# 本机没有对应链接器或模拟器时跳过，不作为失败
-echo
-echo "== linux-arm64 交叉装配 == (第 ${SECONDS}s)"
-printf '\t.text\n\tadd x0, x0, #1\n\tret\n' > "$WORK/probe.s"
-if ! "$CC" --target=aarch64-linux-gnu -c "$WORK/probe.s" -o "$WORK/probe.o" > "$WORK/probe.log" 2>&1; then
-    echo "跳过：本机工具链不支持 aarch64-linux-gnu"
-else
-    cross_pass=0
-    cross_fail=0
+# 交叉产物只验证到装配层：能生成目标平台汇编并被本机工具链接受即可。
+# 本机没有对应架构的汇编器时整轮跳过，不作为失败；probe 只是探测工具链，
+# 用目标架构最基础的指令，避免把工具链缺失误报成后端缺陷。
+cross_round() {
+    local label=$1 triple=$2 probe=$3
+    echo
+    echo "== $label 交叉装配 == (第 ${SECONDS}s)"
+    printf '%s\n' "$probe" > "$WORK/probe.s"
+    if ! "$CC" --target="$triple" -c "$WORK/probe.s" -o "$WORK/probe.o" > "$WORK/probe.log" 2>&1; then
+        echo "跳过：本机工具链不支持 $triple"
+        return
+    fi
+    local round_pass=0
+    local round_fail=0
     for i in "${!names[@]}"; do
-        name=${names[$i]}
-        if ! $GUARD "$S" "${srcs[$i]}" -S --target=linux-arm64 -o "$WORK/$name.linux.s" > "$WORK/$name.linux.log" 2>&1
+        local name=${names[$i]}
+        if ! $GUARD "$S" "${srcs[$i]}" -S --target="$label" -o "$WORK/$name.s" > "$WORK/$name.log" 2>&1
         then
-            echo "FAIL $name : 生成 linux 汇编失败"; tail -3 "$WORK/$name.linux.log"
-            cross_fail=$((cross_fail + 1)); continue
+            echo "FAIL $name : 生成 $label 汇编失败"; tail -3 "$WORK/$name.log"
+            round_fail=$((round_fail + 1)); continue
         fi
-        if ! $GUARD "$CC" --target=aarch64-linux-gnu -c "$WORK/$name.linux.s" -o "$WORK/$name.linux.o" > "$WORK/$name.linux.asm.log" 2>&1
+        if ! $GUARD "$CC" --target="$triple" -c "$WORK/$name.s" -o "$WORK/$name.o" > "$WORK/$name.asm.log" 2>&1
         then
-            echo "FAIL $name : 装配 linux 汇编失败"; tail -5 "$WORK/$name.linux.asm.log"
-            cross_fail=$((cross_fail + 1)); continue
+            echo "FAIL $name : 装配 $label 汇编失败"; tail -5 "$WORK/$name.asm.log"
+            round_fail=$((round_fail + 1)); continue
         fi
-        cross_pass=$((cross_pass + 1))
+        round_pass=$((round_pass + 1))
     done
-    echo "装配通过 ${cross_pass}，失败 ${cross_fail}"
-    fail=$((fail + cross_fail))
-fi
+    echo "装配通过 ${round_pass}，失败 ${round_fail}"
+    fail=$((fail + round_fail))
+}
+
+ARM64_PROBE=$'\t.text\n\tadd x0, x0, #1\n\tret'
+X86_PROBE=$'\t.text\n\taddl %ecx, %eax\n\tret'
+X64_PROBE=$'\t.text\n\taddq %rcx, %rax\n\tret'
+
+cross_round linux-arm64 aarch64-linux-gnu "$ARM64_PROBE"
+cross_round linux-x86 i686-unknown-linux-gnu "$X86_PROBE"
+cross_round linux-x64 x86_64-unknown-linux-gnu "$X64_PROBE"
+cross_round windows-x86 i686-w64-windows-gnu "$X86_PROBE"
+cross_round windows-x64 x86_64-w64-windows-gnu "$X64_PROBE"
+cross_round macos-x86 i386-apple-macosx10.15 "$X86_PROBE"
 
 echo
 echo "通过 ${pass}，失败 ${fail}，共耗时 ${SECONDS}s"

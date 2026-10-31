@@ -8,7 +8,7 @@
 #include <vector>
 #include <cstring>
 #include <cstdio>
-#ifdef WINDOWS
+#if defined(WINDOWS) || defined(_WIN32)
 #include <process.h>
 #else
 #include <unistd.h>
@@ -29,7 +29,7 @@ static string temp_assembly_path(int index){
         base.erase(base.size() - 1);
     }
     stringstream ss;
-#ifdef WINDOWS
+#if defined(WINDOWS) || defined(_WIN32)
     ss << base << "/shaolang-" << _getpid() << "-" << index << ".s";
 #else
     ss << base << "/shaolang-" << getpid() << "-" << index << ".s";
@@ -50,6 +50,16 @@ static string default_output_path(const char * source_path){
     return name;
 }
 
+// Windows 的可执行文件必须带 .exe，否则 CreateProcess 拒载
+static string with_exe_suffix(const string & path){
+    size_t dot = path.find_last_of('.');
+    size_t separator = path.find_last_of("/\\");
+    if(dot == string::npos || (separator != string::npos && dot < separator)){
+        return path + ".exe";
+    }
+    return path;
+}
+
 static void show_usage(){
     cout << "shaoLang 编译器 Version " << SHAOLANG_COMPLIER_VERSION << endl
          << "用法:\nshaolang 源文件 [options]" << endl << endl
@@ -61,7 +71,8 @@ static void show_usage(){
          << "-v                显示编译统计信息" << endl
          << "-S                只生成目标机汇编指令" << endl
          << "-o <文件>         输出文件名：配合 -S 写汇编文件，否则写可执行文件" << endl
-         << "--target=<目标>   编译目标，支持 macos-arm64 / linux-arm64，缺省为本机" << endl << endl
+         << "--target=<目标>   编译目标：macos-arm64 / linux-arm64 / macos-x86 / linux-x86 / " << endl
+         << "                  windows-x86 / linux-x64 / windows-x64，缺省为本机" << endl << endl
          << "缺省装配并链接为可执行文件，未指定 -o 时在当前位置写出与源文件同名的文件" << endl;
 }
 
@@ -124,6 +135,11 @@ int main(int argc, char * argv[]){
     }else if(!files.empty()){
         for(int file_index = 0 ; file_index < (int)files.size() ; file_index ++ ){
             string file_output = has_output_path ? output_path : default_output_path(files[file_index]);
+#if defined(WINDOWS) || defined(_WIN32)
+            if(CompilerArguments::generateExecutable){
+                file_output = with_exe_suffix(file_output);
+            }
+#endif
             int errors_before = Error::get_error_amount();
             FileScanner * scanner = new FileScanner(files[file_index]);
             Lexer * lexer = new Lexer( * scanner);

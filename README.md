@@ -40,7 +40,7 @@ Visual Studio is a multi-config generator, so the executable lands in build/Rele
 shaolang source-file [options]
 ```
 
-Like gcc and javac, the default job is to produce a program: shaolang assembles the intermediate code into aarch64 assembly, then runs the host toolchain to link it. Without -o the executable is written to the current directory under the source file's own name, so shaolang demo.sl leaves ./demo. Nothing is printed on the way; diagnostics are the only output.
+Like gcc and javac, the default job is to produce a program: shaolang assembles the intermediate code into target assembly, then runs the host toolchain to link it. Without -o the executable is written to the current directory under the source file's own name, so shaolang demo.sl leaves ./demo. Nothing is printed on the way; diagnostics are the only output.
 
 | Option | Effect |
 | --- | --- |
@@ -51,7 +51,7 @@ Like gcc and javac, the default job is to produce a program: shaolang assembles 
 | -v | Print where the executable was written and the warning and error counts |
 | -S | Emit assembly only; without -o it goes to standard output |
 | -o file | Name the output: an assembly file with -S, otherwise the executable |
-| --target=name | Compile target, macos-arm64 or linux-arm64, defaulting to the host |
+| --target=name | Compile target: macos-arm64, linux-arm64, macos-x86, linux-x86, windows-x86, linux-x64, windows-x64, defaulting to the host |
 
 Examples:
 
@@ -63,6 +63,6 @@ shaolang demo.sl --target=linux-arm64 -S -o demo.s
 shaolang demo.sl -ir                   # intermediate code, no output file
 ```
 
-Both targets are arm64, and the host is assumed to be arm64 as well. Linking runs through the host toolchain, so a target that differs from the host is declined before the toolchain is invoked: the driver reports that only assembly can be generated and exits without a link failure, which makes -S the only meaningful option there. On Windows the back end declines up front because windows-arm64 is out of scope, so the Windows CI job proves that MSVC can build the compiler and nothing more.
+Seven targets cover three architectures: arm64 on macOS and Linux, x86 on macOS, Linux and Windows, x64 on Linux and Windows. windows-arm64 stays out of scope. Linking runs through the host toolchain, so a target whose platform or word size differs from the host is declined before the toolchain is invoked: the driver reports that only assembly can be generated and exits without a link failure, which makes -S the only meaningful option there. Each host therefore links its own target natively, and the remaining combinations are checked as far as the assembler: the CI matrix runs the suite on linux-arm64, linux-x64, macos-arm64 and, under MSYS2, windows-x86 and windows-x64, while test/e2e/run.sh cross-assembles every target the local toolchain is able to target.
 
 Regression tests live in test/e2e: one .sl source plus the .expected output per case, run by test/e2e/run.sh, which builds the compiler, compiles every case and compares stdout and exit status byte for byte.

@@ -62,5 +62,9 @@ add_executable(shaolang
         src/codegen/target.h
         src/codegen/aarch64_codegen.cpp
         src/codegen/aarch64_codegen.h
+        src/codegen/x86_codegen.cpp
+        src/codegen/x86_codegen.h
+        src/codegen/x64_codegen.cpp
+        src/codegen/x64_codegen.h
         src/codegen/linker.cpp
         src/codegen/linker.h)

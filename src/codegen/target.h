@@ -6,7 +6,9 @@
 using namespace std;
 
 enum class Architecture {
-    ARM64
+    ARM64,
+    X86,
+    X64
 };
 
 enum class SystemPlatform {

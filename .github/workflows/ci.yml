@@ -31,12 +31,14 @@ jobs:
       - name: Build
         run: cmake --build build --config "${{ matrix.build_type }}" --parallel
 
-  # The back end emits aarch64 code and the cases must actually run, so this job only works on arm64 hosts.
+  # Every host compiles and runs the cases for its own target triple, so this job needs a host
+  # whose architecture the back end supports: arm64 gives linux-arm64, x86_64 gives linux-x64.
+  # CC is clang only for the cross-assembly rounds; linking always goes through the host cc.
   e2e:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04-arm, macos-latest]
+        os: [ubuntu-24.04-arm, ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
@@ -47,6 +49,7 @@ jobs:
 
     env:
       SHAOLANG: ${{ github.workspace }}/build/shaolang
+      CC: clang
 
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +58,7 @@ jobs:
         run: |
           uname -m
           "${CXX:-c++}" --version | head -1
+          clang --version | head -1 || echo "no clang, cross-assembly rounds will skip"
 
       - name: Build compiler
         run: |
@@ -63,3 +67,47 @@ jobs:
 
       - name: Run end-to-end tests
         run: test/e2e/run.sh
+
+  # The two Windows targets only produce a runnable file with a native Windows toolchain, so this
+  # job runs the whole suite once per word size under MSYS2. run.sh builds the compiler itself, and
+  # the cross-assembly rounds skip on their own because gcc does not understand --target=.
+  e2e-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - msystem: MINGW32
+            toolchain: mingw-w64-i686-toolchain
+          - msystem: MINGW64
+            toolchain: mingw-w64-x86_64-toolchain
+
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    env:
+      CC: gcc
+      CXX: g++
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            git
+            ${{ matrix.toolchain }}
+
+      - name: Show toolchain
+        run: |
+          uname -s
+          g++ --version | head -1
+
+      # Windows checkouts do not keep the executable bit, so run the suite through bash
+      - name: Run end-to-end tests
+        run: bash test/e2e/run.sh

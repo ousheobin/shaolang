@@ -32,8 +32,16 @@ void Compiler::compile() {
 
 void Compiler::emit_assembly(ostream & output,const CompileTarget & target) {
     symbolTable -> optimize();
-    AArch64CodeGenerator generator(symbolTable,output,target);
-    generator.generate();
+    if(target.architecture == Architecture::X86){
+        X86CodeGenerator generator(symbolTable,output,target);
+        generator.generate();
+    }else if(target.architecture == Architecture::X64){
+        X64CodeGenerator generator(symbolTable,output,target);
+        generator.generate();
+    }else{
+        AArch64CodeGenerator generator(symbolTable,output,target);
+        generator.generate();
+    }
 }
 
 Compiler::~Compiler() {
