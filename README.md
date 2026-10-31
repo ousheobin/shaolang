@@ -63,6 +63,6 @@ shaolang demo.sl --target=linux-arm64 -S -o demo.s
 shaolang demo.sl -ir                   # intermediate code, no output file
 ```
 
-Both targets are arm64, and the host is assumed to be arm64 as well, which is what the driver treats as "本机". Linking runs through the host toolchain, so asking for a target that differs from the host gives the message 目标 linux-arm64 与本机系统不同，只能生成汇编文件 instead of a link failure: only -S is meaningful there. On Windows the back end declines before doing anything, since windows-arm64 is not implemented, so the Windows CI job proves that MSVC can build the compiler and nothing more.
+Both targets are arm64, and the host is assumed to be arm64 as well. Linking runs through the host toolchain, so a target that differs from the host is declined before the toolchain is invoked: the driver reports that only assembly can be generated and exits without a link failure, which makes -S the only meaningful option there. On Windows the back end declines up front because windows-arm64 is out of scope, so the Windows CI job proves that MSVC can build the compiler and nothing more.
 
 Regression tests live in test/e2e: one .sl source plus the .expected output per case, run by test/e2e/run.sh, which builds the compiler, compiles every case and compares stdout and exit status byte for byte.

@@ -330,11 +330,6 @@ void AArch64CodeGenerator::emit_body(vector<IntermediateInstruct *> &codes) {
                         "内部错误：后端无法翻译指令 " + interOpHints[op]);
                 break;
         }
-        if(op != OP_ARG && op != OP_CALL && op != OP_PROC && op != OP_DECLARE && op != OP_EMPTY_INST){
-            // 调用前必须先声明结果临时变量，因此 dec 指令属于参数序列的一部分；
-            // 其余指令出现说明参数序列被错误恢复打断，丢弃未消费的参数避免污染后续调用
-            pending_args.clear();
-        }
     }
 }
 

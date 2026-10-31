@@ -232,6 +232,10 @@ Variable* SymbolTable::get_true_var() {
 void SymbolTable::optimize() {
     for(int i = 0 ; i < function_define_order_list.size() ; i ++ ) {
         Function *fun = functionTable[function_define_order_list[i]];
+        // 只有原型没有定义的函数没有指令流，空指令序列送进控制流图会越界
+        if(fun == NULL || fun -> is_declare()){
+            continue;
+        }
         fun -> do_optimize(this);
     }
 }

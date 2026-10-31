@@ -43,8 +43,8 @@ bool target_supported(const CompileTarget & target,string & reason) {
         return false;
     }
     if(target.platform == SystemPlatform::Windows){
-        // Windows ARM64 需要调用方预留 shadow space，汇编格式与 ELF / Mach-O 均不相同
-        reason = "windows-arm64 后端尚未实现";
+        // 语言只在 macOS 与 Linux 的 ARM64 上验证过，Windows ARM64 不在支持计划里
+        reason = "不支持 windows-arm64，目标只有 macos-arm64 与 linux-arm64";
         return false;
     }
     return true;
