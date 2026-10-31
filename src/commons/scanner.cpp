@@ -36,7 +36,7 @@ int FileScanner::get_current_column() {
     return current_column_number + 1;
 }
 
-char FileScanner::get_current_char() {
+int FileScanner::get_current_char() {
     return current_char;
 }
 
@@ -44,22 +44,27 @@ char* FileScanner::get_file_name() {
     return file_name;
 }
 
-char FileScanner::move() {
+int FileScanner::move() {
 
+    // 文件读完后句柄已经关闭，此后一律返回结束标记
     if(file == NULL){
         return EOF_CHAR;
     }
 
     if(current_read_position == current_read_length - 1){
         current_read_length = (int) fread(buffer,1,BUFFER_SIZE,file);
-        if(current_read_length < 1 ){
-            current_read_length = -1;
-            buffer[0] = EOF_CHAR;
-        }
         current_read_position = -1;
+        if(current_read_length < 1){
+            this -> last_char = current_char;
+            this -> current_char = EOF_CHAR;
+            fclose(file);
+            file = NULL;
+            return current_char;
+        }
     }
 
-    char current_scan_ch = buffer[++ current_read_position];
+    // 转成无符号再放宽为 int：char 在 ARM64 Linux 上不带符号，真实字节永远撞不到 -1
+    int current_scan_ch = (unsigned char) buffer[++ current_read_position];
 
 #ifdef LF
     if(last_char == '\n'){
@@ -72,13 +77,7 @@ char FileScanner::move() {
         current_column_number = 0;
     }
 #endif
-    // 只有读完文件才关闭句柄；非 ASCII 字节（如 UTF-8 注释）只是普通字符
-    if(current_scan_ch != EOF_CHAR){
-        current_column_number ++;
-    }else{
-        fclose(file);
-        file = NULL;
-    }
+    current_column_number ++;
     this->last_char = current_char;
     this->current_char = current_scan_ch;
 

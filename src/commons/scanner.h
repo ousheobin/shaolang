@@ -11,8 +11,8 @@ class FileScanner{
 
     static const int BUFFER_SIZE = 128;
 
-    // 文件结束哨兵，与 UTF-8 字节不会冲突（UTF-8 中 0xFF 无合法编码）
-    static const char EOF_CHAR = (char)-1;
+    // 读到的字节按无符号取值，范围 0~255，因此 -1 可以安全地表示文件结束
+    static const int EOF_CHAR = -1;
 
     char    * file_name;
     FILE    * file;
@@ -21,8 +21,8 @@ class FileScanner{
     int     current_read_length;
     int     current_read_position;
 
-    char    last_char;
-    char    current_char;
+    int     last_char;
+    int     current_char;
 
     int     current_line_number;
     int     current_column_number;
@@ -32,10 +32,10 @@ public:
     FileScanner(char * file);
     ~FileScanner();
 
-    char move();
+    int move();
 
     char * get_file_name();
-    char get_current_char();
+    int get_current_char();
     int get_current_line();
     int get_current_column();
 

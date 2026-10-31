@@ -130,7 +130,7 @@ void Lexer::skip_block_comment() {
 Token * Lexer::read_identifier() {
     string word = "";
     while(check_is_valid_char(current_char) || check_is_number(current_char)){
-        word += current_char;
+        word += (char) current_char;
         advance();
     }
     LexicalType keyword_type = search_keyword(word);
@@ -162,10 +162,10 @@ Token * Lexer::read_string() {
                 case '"' : str += '"' ; break;
                 case '\'': str += '\''; break;
                 case '0' : str += '\0'; break;
-                default  : str += current_char;
+                default  : str += (char) current_char;
             }
         }else{
-            str += current_char;
+            str += (char) current_char;
         }
         advance();
     }
@@ -191,12 +191,12 @@ Token * Lexer::read_char() {
             case '"' : character = '"' ; break;
             case '\'': character = '\''; break;
             case '0' : character = '\0'; break;
-            default  : character = current_char;
+            default  : character = (char) current_char;
         }
     }else if(current_char == '\'' || current_char == '\n' || current_char == '\r'){
         valid = false;
     }else{
-        character = current_char;
+        character = (char) current_char;
     }
     if(valid){
         advance();
@@ -240,7 +240,7 @@ Token * Lexer::read_number() {
 }
 
 Token * Lexer::read_operator() {
-    char ch = current_char;
+    int ch = current_char;
     advance();
     switch (ch){
         case '+':
@@ -295,21 +295,21 @@ Token * Lexer::read_operator() {
     }
 }
 
-Token * Lexer::invalid_operator(char ch) {
+Token * Lexer::invalid_operator(int ch) {
     std::stringstream ss;
-    ss << "符号'" << ch << "'不是ShaoLang可用的运算符";
+    ss << "符号'" << (char) ch << "'不是ShaoLang可用的运算符";
     LEXICAL_ERROR(ss.str());
     return NULL;
 }
 
-bool Lexer::check_is_valid_char(const char ch) const{
+bool Lexer::check_is_valid_char(const int ch) const{
     return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_' ;
 }
 
-bool Lexer::check_is_number(const char ch) const {
+bool Lexer::check_is_number(const int ch) const {
     return ch >= '0' && ch <= '9';
 }
 
-bool Lexer::check_is_blank(const char ch) const {
+bool Lexer::check_is_blank(const int ch) const {
     return ch == ' '  || ch == '\t' || ch == '\n' || ch == '\r';
 }

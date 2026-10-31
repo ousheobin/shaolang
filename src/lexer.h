@@ -14,12 +14,12 @@ class Lexer{
 private:
 
     FileScanner & scanner;
-    char current_char;
+    int current_char;
     Token * current_token;
 
-    bool check_is_valid_char(const char ch) const;
-    bool check_is_number(const char ch) const;
-    bool check_is_blank(const char ch) const;
+    bool check_is_valid_char(const int ch) const;
+    bool check_is_number(const int ch) const;
+    bool check_is_blank(const int ch) const;
 
     void advance();
     void skip_blanks();
@@ -32,7 +32,7 @@ private:
     Token * read_number();
     Token * read_operator();
 
-    Token * invalid_operator(char ch);
+    Token * invalid_operator(int ch);
 
 public:
 
