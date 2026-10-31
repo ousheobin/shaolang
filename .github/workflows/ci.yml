@@ -30,3 +30,27 @@ jobs:
 
       - name: Build
         run: cmake --build build --config "${{ matrix.build_type }}" --parallel
+
+  # The back end emits aarch64 code and the cases must actually run, so this job only works on arm64 hosts.
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          uname -m
+          "${CXX:-c++}" --version | head -1
+
+      - name: Run end-to-end tests
+        run: test/e2e/run.sh
