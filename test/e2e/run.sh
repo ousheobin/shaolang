@@ -32,7 +32,7 @@ S=$WORK/shaolang
 # 期望值 N*(N+1)/2 由 shell 算术独立算出，不来自编译器输出
 gen_deep() {
     local n=$1
-    local name="e16_$n"
+    local name="deepFrame$n"
     {
         echo '-[int] main(){'
         for ((i = 1; i <= n; i++)); do echo "  int v$i = $i;"; done
@@ -52,14 +52,14 @@ add_case() {
     expects+=("$3")
 }
 
-for src in "$CASES"/e*.sl; do
+for src in "$CASES"/*.sl; do
     name=$(basename "$src" .sl)
     add_case "$name" "$src" "$CASES/$name.expected"
 done
 gen_deep 300
-add_case e16_300 "$WORK/e16_300.sl" "$WORK/e16_300.expected"
+add_case deepFrame300 "$WORK/deepFrame300.sl" "$WORK/deepFrame300.expected"
 gen_deep 600
-add_case e16_600 "$WORK/e16_600.sl" "$WORK/e16_600.expected"
+add_case deepFrame600 "$WORK/deepFrame600.sl" "$WORK/deepFrame600.expected"
 
 pass=0
 fail=0
