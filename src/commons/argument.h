@@ -11,6 +11,10 @@ public:
     static bool showHelp;
     static bool showLexicalResult;
     static bool showDataFlowBlocks;
+    static bool showIntermediateCode;
+    static bool showCompileSummary;
+    static bool emitAssembly;
+    static bool generateExecutable;
 };
 
 #endif //SHAOLANG_ARGUMENT_H

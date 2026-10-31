@@ -39,8 +39,6 @@ private:
 
     void set_variable_name(const string &variable_name);
     void set_type(LexicalType type);
-    void set_is_pointer(bool is_pointer);
-    void set_array_length(int array_length);
     void set_scope_path(vector<int> scope_path);
 
     void init_var_obj();
@@ -74,6 +72,8 @@ public:
     bool is_arr();
     bool is_void();
     bool is_refference();
+    // 索引或解引用定位出的存储单元：值存放在 get_pointer() 给出的地址里
+    bool is_cell();
     bool is_basic_type();
     bool is_literal_value();
     bool is_constant_value();
@@ -88,6 +88,11 @@ public:
     // Pointer
     Variable * get_pointer();
     void set_pointer(Variable * ptr);
+    void set_is_pointer(bool is_pointer);
+
+    // Array
+    void set_array(int length);
+    int get_array_length();
 
     void set_is_left(bool is_left);
     bool is_left_var();

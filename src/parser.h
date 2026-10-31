@@ -35,6 +35,7 @@ private:
     // Variables Grammar
     Variable * value_definition(LexicalType type);
     void define_list(LexicalType type);
+    int bracket_length();
     Variable * init(LexicalType type,string var_name);
 
     // Function Grammar
@@ -82,7 +83,6 @@ private:
     Variable * element();
     Variable * constraint();
     Variable * id_extend(string var_name);
-    Variable * id_assgin(string var_name);
 
     // Function Argument Grammar
     void init_fun_arg(vector<Variable *> * args);

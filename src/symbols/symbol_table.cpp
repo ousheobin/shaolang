@@ -194,6 +194,18 @@ Function * SymbolTable::get_current_function() {
     return current_function;
 }
 
+vector<Function *> SymbolTable::get_defined_functions() {
+    vector<Function *> functions;
+    for(unsigned long i = 0 ; i < function_define_order_list.size() ; i ++ ){
+        Function * fun = functionTable[function_define_order_list[i]];
+        // 只有声明没有定义的函数不生成代码
+        if(fun != NULL && !fun->is_declare()){
+            functions.push_back(fun);
+        }
+    }
+    return functions;
+}
+
 void SymbolTable::add_inter_instruct(IntermediateInstruct *instruct) {
     if(current_function){
         current_function -> add_instruct(instruct);

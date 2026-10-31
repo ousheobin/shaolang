@@ -108,19 +108,17 @@ void Function::do_optimize(SymbolTable * symbolTable) {
     is_opt = true;
 }
 
+vector<IntermediateInstruct *> Function::get_emitted_code() {
+    if(is_opt){
+        return optCode;
+    }
+    return interCodeCollection.get_codes();
+}
+
 void Function::print_code() {
     std::cout << "function - "<<function_name << std::endl;
-    if(!is_opt){
-        vector<IntermediateInstruct *> codes = interCodeCollection.get_codes();
-        for(int i = 0 ; i < codes.size() ; i ++ ){
-            IntermediateInstruct * ins = codes[i];
-            cout << ins->display();
-        }
-    }else{
-        for(int i = 0 ; i < optCode.size() ; i ++ ){
-            IntermediateInstruct * ins = optCode[i];
-            cout << ins->display();
-        }
+    vector<IntermediateInstruct *> codes = get_emitted_code();
+    for(unsigned long i = 0 ; i < codes.size() ; i ++ ){
+        cout << codes[i]->display();
     }
-
 }

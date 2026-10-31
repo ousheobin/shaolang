@@ -57,4 +57,10 @@ add_executable(shaolang
         src/dataflow/data_flow_graph.cpp
         src/dataflow/data_flow_graph.h
         src/optimization/const_opt.cpp
-        src/optimization/const_opt.h)
+        src/optimization/const_opt.h
+        src/codegen/target.cpp
+        src/codegen/target.h
+        src/codegen/aarch64_codegen.cpp
+        src/codegen/aarch64_codegen.h
+        src/codegen/linker.cpp
+        src/codegen/linker.h)

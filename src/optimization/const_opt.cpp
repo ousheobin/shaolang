@@ -60,10 +60,31 @@ bool ConstPropagation::is_int_literal(Variable * variable) {
     return variable != NULL && variable -> is_literal_value() && variable -> get_type() != C_STRING;
 }
 
+void ConstPropagation::kill_globals(vector<long> & out_vals) {
+    for(unsigned long i=0;i<globalVariables->size();++i){
+        out_vals[globalVariables->at(i)->opt_index]=NAC;
+    }
+}
+
+bool ConstPropagation::passes_address(Function * function) {
+    if(function == NULL){
+        return false;
+    }
+    vector<Variable *> parameters = function -> get_parameters();
+    for(unsigned long i = 0 ; i < parameters.size() ; i ++ ){
+        if(!parameters[i] -> is_basic_type()){
+            return true;
+        }
+    }
+    return false;
+}
+
 long ConstPropagation::initial_lattice_value(Variable * variable) {
     if(!variable->is_basic_type()){
         return NAC;
-    }else if(variable->is_init()){
+    }else if(variable->is_init() && variable->get_scope_path().size() > 1){
+        // 全局变量的初值只在程序启动时写入静态区，函数进入时它可能早已被别的函数改掉，
+        // 按 UNDEF 起算才能保住后续的读写
         return variable -> get_int_value();
     }
     return UNDEF;
@@ -273,14 +294,36 @@ void ConstPropagation::fx(IntermediateInstruct * instruct, vector<long> & in_val
             out_vals[storePoint->opt_index] = NAC;
         }
     }
+    else if(op==OP_READ){
+        if(storePoint != NULL && storePoint -> is_cell()){
+            // input *p / input a[i] 写入的是指针所指的存储位置，其余变量的已知值都可能失效
+            for(unsigned long i=0;i<out_vals.size(); i ++){
+                out_vals[i]=NAC;
+            }
+        }
+        // 外部输入的值在本次分析内不可知
+        if(storePoint != NULL && storePoint -> opt_index != -1){
+            out_vals[storePoint->opt_index] = NAC;
+        }
+    }
+    else if(op==OP_PRINT){
+        // 输出只读取值，不改变任何变量的值
+    }
     else if(op==OP_PROC){
-        for(unsigned long i=0;i<globalVariables->size();++i){
-            out_vals[globalVariables->at(i)->opt_index]=NAC;
+        kill_globals(out_vals);
+        if(passes_address(instruct -> getFunction())){
+            // 被调方拿到地址后可以直接改写调用方的存储位置
+            for(unsigned long i=0;i<out_vals.size(); i ++){
+                out_vals[i]=NAC;
+            }
         }
     }
     else if(op==OP_CALL){//破坏运算call f()
-        for(unsigned long i=0;i<globalVariables->size();++i){
-            out_vals[globalVariables->at(i)->opt_index]=NAC;
+        kill_globals(out_vals);
+        if(passes_address(instruct -> getFunction())){
+            for(unsigned long i=0;i<out_vals.size(); i ++){
+                out_vals[i]=NAC;
+            }
         }
         if(storePoint != NULL && storePoint -> opt_index != -1){
             out_vals[storePoint->opt_index]=NAC;

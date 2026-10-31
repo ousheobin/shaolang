@@ -122,8 +122,13 @@ void Variable::set_is_pointer(bool is_pointer) {
     this->is_pointer = is_pointer;
 }
 
-void Variable::set_array_length(int array_length) {
-    this->array_length = array_length;
+void Variable::set_array(int length) {
+    this -> is_array = true;
+    this -> array_length = length;
+}
+
+int Variable::get_array_length() {
+    return array_length > 0 ? array_length : 0;
 }
 
 void Variable::set_scope_path(vector<int> scope_path) {
@@ -162,6 +167,10 @@ bool Variable::is_void() {
 
 bool Variable::is_refference() {
     return (is_array || is_pointer);
+}
+
+bool Variable::is_cell() {
+    return ptr != NULL && ptr != this;
 }
 
 bool Variable::is_basic_type() {
@@ -227,7 +236,9 @@ string Variable::get_value_display() {
             ss << variable_name;
         }
     }else if(is_array){
-        ss << typeName[type] << "_" << "ARRAY";
+        ss << variable_name << "[" << array_length << "]";
+    }else if(is_cell()){
+        ss << "(*" << ptr -> get_value_display() << ")";
     }else if(is_pointer && ptr != NULL && ptr != this ){
         ss << ptr -> get_value_display();
     }else{

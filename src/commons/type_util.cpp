@@ -18,30 +18,24 @@ bool TypeUtil::type_check(Variable * left,Variable * right) {
     if(left==NULL||right==NULL){
         return false;
     }
-    if(left->is_basic_type() && right -> is_basic_type()){
-        return true;
-    }else if(!left->is_basic_type() && !right -> is_basic_type()){
-        return canonical_type(left->get_type()) == canonical_type(right->get_type());
-    }else{
+    // 索引与解引用单元按存放的内容比较，地址值之间必须元素类型一致，基本值之间允许 int / char 互转
+    bool left_address = is_address_value(left);
+    bool right_address = is_address_value(right);
+    if(left_address != right_address){
         return false;
     }
+    if(left_address){
+        return canonical_type(left -> get_type()) == canonical_type(right -> get_type());
+    }
+    return true;
 }
 
-int TypeUtil::type_size(Variable * var) {
-    if(var == NULL){
-        return 0;
-    }
-    // 指针与数组按所指元素的宽度计算步长
-    return canonical_type(var->get_type()) == TK_CHAR ? 1 : 4;
+bool TypeUtil::is_address_value(Variable * var) {
+    // 指针变量、数组名以及存放地址的临时变量；存储单元的值是它所指的内容，不算地址值
+    return var != NULL && !var -> is_basic_type() && !var -> is_cell();
 }
 
 Variable* TypeUtil::get_offset_step(Variable *var) {
-    if(var->is_basic_type()){
-        return SymbolTable::oneVariable;
-    }else if(var->get_type()==TK_CHAR){
-        return SymbolTable::oneVariable;
-    }else if(var->get_type()==TK_INT){
-        return SymbolTable::fourVariable;
-    }
-    return NULL;
+    // 指针加减一个元素等于加减一个槽位的字节数，索引单元和普通的值都按 1 递增
+    return is_address_value(var) ? SymbolTable::eightVariable : SymbolTable::oneVariable;
 }

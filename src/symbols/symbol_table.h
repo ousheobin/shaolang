@@ -70,6 +70,8 @@ public:
     void end_define_function();
     Function * get_function(string name,vector<Variable*> & args);
     Function * get_current_function();
+    // 按定义顺序返回需要生成代码的函数（排除只有声明的函数）
+    vector<Function *> get_defined_functions();
 
     // String
     void add_string(Variable * str_val);

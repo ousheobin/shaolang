@@ -50,6 +50,9 @@ public:
 
     void add_instruct(IntermediateInstruct * instruct);
 
+    // 优化后的指令序列，未优化时退回到原始序列
+    vector<IntermediateInstruct *> get_emitted_code();
+
     void do_optimize(SymbolTable * symbolTable);
 
     void print_code();

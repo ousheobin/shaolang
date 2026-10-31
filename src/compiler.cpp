@@ -20,10 +20,20 @@ void Compiler::compile() {
     }
     parser = new Parser(lexer,symbolTable,irGenerator);
     parser -> do_anlayse();
+    if(!CompilerArguments::showIntermediateCode){
+        // 编译目标模式下中间代码不打印，优化统一由 emit_assembly 完成
+        return;
+    }
     symbolTable -> show_all_code();
     symbolTable -> optimize();
     cout << "----- After Optimization: ----"<<endl;
     symbolTable -> show_all_code();
+}
+
+void Compiler::emit_assembly(ostream & output,const CompileTarget & target) {
+    symbolTable -> optimize();
+    AArch64CodeGenerator generator(symbolTable,output,target);
+    generator.generate();
 }
 
 Compiler::~Compiler() {

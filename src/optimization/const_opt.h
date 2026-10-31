@@ -34,6 +34,9 @@ class ConstPropagation{
     void fx(IntermediateInstruct * instruct,vector<long>& in_vals,vector<long>& out_vals);
     bool transform_block(Block*block);
 
+    void kill_globals(vector<long> & out_vals);
+    static bool passes_address(Function * function);
+
     void do_analyse();
 
     void algebra_simplify();

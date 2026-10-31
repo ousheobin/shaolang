@@ -6,6 +6,8 @@
 
 #include "commons/argument.h"
 
+#include <ostream>
+
 #include "lexer.h"
 #include "parser.h"
 #include "symbols/symbol_table.h"
@@ -13,6 +15,8 @@
 #include "ir_generator.h"
 #include "commons/scanner.h"
 #include "commons/error.h"
+#include "codegen/aarch64_codegen.h"
+#include "codegen/target.h"
 
 class Compiler {
 
@@ -31,6 +35,7 @@ public:
     Compiler(Lexer * lexer_ptr,FileScanner * scanner_ptr);
     ~Compiler();
     void compile();
+    void emit_assembly(ostream & output,const CompileTarget & target);
 };
 
 

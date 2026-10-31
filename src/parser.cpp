@@ -18,8 +18,8 @@
 #define ALL_COMPARE_SYMBOL IS(GT)OR(GE)OR(LT)OR(LE)OR(EQ)OR(NEQ)
 #define ALL_RIGHT_OPERATORS (ALL_COMPARE_SYMBOL)OR(OR)OR(AND)OR(ADD)OR(SUB)OR(MUL)OR(DIV)OR(MOD)
 #define ALL_LEFT_OPERATORS (ALL_RIGHT_OPERATORS)OR(INC)OR(DEC)
-#define ALL_EXPR_KW IS(L_PARENTHESE)OR(C_INTEGER)OR(C_CHAR)OR(C_STRING)OR(ID)OR(NOT)OR(SUB)OR(INC)OR(DEC)
-#define ALL_STATEMENT_KW (ALL_EXPR_KW)OR(SEMICOLON)OR(K_WHILE)OR(K_IF)OR(K_CONTINUE)OR(K_RETURN)OR(K_BREAK)
+#define ALL_EXPR_KW IS(L_PARENTHESE)OR(C_INTEGER)OR(C_CHAR)OR(C_STRING)OR(ID)OR(NOT)OR(SUB)OR(INC)OR(DEC)OR(LEA)OR(MUL)
+#define ALL_STATEMENT_KW (ALL_EXPR_KW)OR(SEMICOLON)OR(K_WHILE)OR(K_IF)OR(K_CONTINUE)OR(K_RETURN)OR(K_BREAK)OR(K_INPUT)OR(K_OUTPUT)
 
 Parser::Parser(Lexer * lex, SymbolTable * symTable,IRGenerator * irGen){
     symbolTable = symTable;
@@ -132,22 +132,56 @@ LexicalType Parser::type() {
 }
 
 /**
- * <VALUE_DEFINITION>-><ID> <INIT><DEFINE_LIST>
+ * <VALUE_DEFINITION>-><MUL?><ID><ARRAY?><INIT><DEFINE_LIST>
  * @param type
  * @return
  */
 Variable *Parser::value_definition(LexicalType type) {
-    string var_name = "";
-    Variable * var = NULL;
-    if(IS(ID)){
-        var_name = ((IDToken *) current_token) -> name;
-        move();
-        var = init(type,var_name);
-        define_list(type);
-    }else{
+    // '*' 只修饰紧跟它的这个名字，int *p,q 中 q 仍是普通变量
+    bool is_pointer = check_and_move(MUL);
+    if(!IS(ID)){
         recovery(IS(L_BRACKET)OR(ASSIGN)OR(COMMA)OR(SEMICOLON),VALUE_DEFINE_ERROR,VALUE_DEFINE_ERROR);
+        return NULL;
     }
+    string var_name = ((IDToken *) current_token) -> name;
+    move();
+    int array_length = bracket_length();
+    Variable * var = init(type,var_name);
+    if(is_pointer){
+        var -> set_is_pointer(true);
+    }
+    if(array_length > 0){
+        var -> set_array(array_length);
+    }
+    define_list(type);
     return var;
+}
+
+/**
+ * <ARRAY?>-><L_BRACKET><C_INTEGER><R_BRACKET>| ε
+ * 数组长度必须是正整数字面量，长度即分配的槽位个数
+ * @return 数组长度，非数组声明返回 0
+ */
+int Parser::bracket_length() {
+    if(!check_and_move(L_BRACKET)){
+        return 0;
+    }
+    int length = 0;
+    if(IS(C_INTEGER)){
+        length = ((IntegerToken *) current_token) -> value;
+        move();
+    }else{
+        SYNTAX_ERROR(syntaxErrorHints[CONSTRANT_DEFINE_ERROR] + ":" + typeName[current_token -> type]);
+        move();
+    }
+    if(!check_and_move(R_BRACKET)){
+        recovery(IS(ASSIGN)OR(COMMA)OR(SEMICOLON),R_BRACKET_LOST,R_BRACKET_ERROR);
+    }
+    if(length <= 0){
+        SE_ERROR(semanticErrorHints[ARRAY_LENGTH_INVAILD]);
+        return 0;
+    }
+    return length;
 }
 
 /**
@@ -217,8 +251,10 @@ void Parser::function_definition(LexicalType type) {
 void Parser::parameter(vector<Variable *> &parameters) {
     if(ALL_TYPES){
         Variable * var = para_data();
-        symbolTable -> add_variable(var);
-        parameters.push_back(var);
+        if(var != NULL){
+            symbolTable -> add_variable(var);
+            parameters.push_back(var);
+        }
         para_list(parameters);
     }
 }
@@ -230,8 +266,10 @@ void Parser::parameter(vector<Variable *> &parameters) {
 void Parser::para_list(vector<Variable *> &parameters) {
     if(check_and_move(COMMA)){
         Variable * var = para_data();
-        symbolTable->add_variable(var);
-        parameters.push_back(var);
+        if(var != NULL){
+            symbolTable -> add_variable(var);
+            parameters.push_back(var);
+        }
         para_list(parameters);
     }else{
         if(IS(ID)){
@@ -243,18 +281,25 @@ void Parser::para_list(vector<Variable *> &parameters) {
 }
 
 /**
- * <PARA_DATA> -> <TYPE><ID>
+ * <PARA_DATA> -> <TYPE><MUL?><ID>
  * @return
  */
 Variable* Parser::para_data() {
     string varName = "";
     LexicalType paramType = type();
+    bool is_pointer = check_and_move(MUL);
     if(!IS(ID)){
         recovery(IS(COMMA)OR(R_PARENTHESE)OR(L_BRACKET),ID_LOST,ID_ERROR);
+        return NULL;
     }
     varName = ((IDToken *)current_token) -> name;
     move();
-    return new Variable(varName,symbolTable->get_current_scope_path(),paramType,NULL);
+    Variable * var = new Variable(varName,symbolTable->get_current_scope_path(),paramType,NULL);
+    if(is_pointer){
+        // 形参是指针时，实参传入的就是所指向的地址
+        var -> set_is_pointer(true);
+    }
+    return var;
 }
 
 /**
@@ -321,7 +366,6 @@ void Parser::local_var_def() {
  *               |   <KW_CONTINUE> <SEMICOLON>
  */
 void Parser::statement() {
-    string var_name = "";
     switch (current_token->type){
 //        case ID:
 //            var_name = ((IDToken *) current_token)->name;
@@ -357,24 +401,19 @@ void Parser::statement() {
             break;
         case K_OUTPUT:
             move();
-            if(!check_and_move(K_OUTPUT)){
-                recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),NONE,NONE);
-            }
-            all_expr();
+            irGenerator -> generate_print(all_expr());
             if(!check_and_move(SEMICOLON)){
                 recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),SEMICOLON_LOST,SEMICOLON_ERROR);
             }
             break;
         case K_INPUT:
             move();
-            if(!check_and_move(K_OUTPUT)){
-                recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),NONE,NONE);
-            }
-            if(!IS(ID)){
+            // 读入的目标必须是可写的存储位置：普通变量、a[i] 或 *p
+            if(ALL_EXPR_KW){
+                irGenerator -> generate_read(expr());
+            }else{
                 recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),ID_LOST,ID_ERROR);
             }
-            var_name = ((IDToken *)current_token)->name;
-            move();
             if(!check_and_move(SEMICOLON)){
                 recovery(ALL_TYPES||ALL_STATEMENT_KW||IS(R_BRACE),SEMICOLON_LOST,SEMICOLON_ERROR);
             }
@@ -642,9 +681,16 @@ LexicalType Parser::mul_div_mod() {
  * @return
  */
 Variable * Parser::factor() {
-    if(IS(NOT)OR(SUB)OR(INC)OR(DEC)){
+    if(IS(NOT)OR(SUB)OR(INC)OR(DEC)OR(LEA)OR(MUL)){
         LexicalType op = other_operators();
         Variable * left = factor();
+        // '&' 与 '*' 在解析阶段就要确定存储位置，不走普通的单目运算
+        if(op == LEA){
+            return irGenerator -> generate_lea(left);
+        }
+        if(op == MUL){
+            return irGenerator -> generate_deref(left);
+        }
         Variable * result = irGenerator -> generate_one_value_op(left,op,NULL);
         return result;
     }else{
@@ -653,7 +699,7 @@ Variable * Parser::factor() {
 }
 
 /**
- * <OTHER_OPERATORS> -><KW_NOT>|<KW_SUB>|<KW_INC>|<KW_DEC>
+ * <OTHER_OPERATORS> -><KW_NOT>|<KW_SUB>|<KW_INC>|<KW_DEC>|<KW_LEA>|<KW_MUL>
  * @return
  */
 LexicalType Parser::other_operators() {
@@ -721,11 +767,14 @@ Variable * Parser::constraint() {
         move();
         return variable;
     }
+    // 走到这里说明表达式开头既不是标识符、'('，也不是常量，必须报错而不是静默返回
+    SYNTAX_ERROR(syntaxErrorHints[CONSTRANT_DEFINE_ERROR] + ":" + typeName[current_token -> type]);
     return NULL;
 }
 
 /**
- * <ID_EXTEND>-><L_PARENTHESE><INIT_FUN_ARG><R_PARENTHESE> | <ID_ASSIGN> | ε
+ * <ID_EXTEND>-><L_PARENTHESE><INIT_FUN_ARG><R_PARENTHESE> | <L_BRACKET><EXPR><R_BRACKET> | ε
+ * 赋值不在此处展开，统一交给 <ASSIGN_EXTEND>，*p = v 与 a[i] = v 才能把单元当作左值
  */
 Variable * Parser::id_extend(string val_name) {
     Variable * variable = NULL;
@@ -739,29 +788,19 @@ Variable * Parser::id_extend(string val_name) {
         // 调用的结果数据要作为表达式值参与后续运算
         variable = irGenerator -> generate_function_call(function,args);
         delete args;
-    }else if(IS(ASSIGN)){
-        variable = id_assgin(val_name);
+    }else if(check_and_move(L_BRACKET)){
+        // a[i] 与 p[i] 都定位到一个存储单元，可读写
+        Variable * base = symbolTable -> get_variable(val_name);
+        Variable * index = expr();
+        if(!check_and_move(R_BRACKET)){
+            recovery(ALL_RIGHT_OPERATORS||IS(SEMICOLON)OR(R_BRACE)OR(COMMA)OR(R_PARENTHESE),
+                     R_BRACKET_LOST,R_BRACKET_ERROR);
+        }
+        variable = irGenerator -> generate_index(base,index);
     }else{
         variable = symbolTable -> get_variable(val_name);
     }
     return variable;
-}
-
-/**
- * <ID_ASSIGN> -> <ASSIGN><EXPR>
- * @return
- */
-Variable* Parser::id_assgin(string var_name) {
-    Variable * var = NULL;
-    if(check_and_move(ASSIGN)){
-        var = symbolTable->get_variable(var_name);
-        if(var != NULL){
-            Variable * initVariable = expr();
-            var -> set_init_value(initVariable);
-            irGenerator -> generate_two_value_op(var,ASSIGN,initVariable);
-        }
-    }
-    return var;
 }
 
 /**
