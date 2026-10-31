@@ -3,6 +3,8 @@
 # 用例文件只有 .sl 源码和期望输出，所有产物（编译器、可执行文件、日志）都写在临时目录，
 # 仓库里不留任何中间结果，也不依赖任何本机绝对路径。
 set -u
+# CI 的默认 shell 带 -e，而用例程序有意以非零码退出，套件的成败由下面的计数决定
+set +e
 
 cd "$(dirname "$0")" || exit 1
 CASES=$PWD
@@ -13,20 +15,32 @@ trap 'rm -rf "$WORK"' EXIT
 CXX=${CXX:-c++}
 CC=${CC:-cc}
 
+# 卡住命令的等待上限，没有 timeout（比如 macOS 本机）就不加保护
+TIMEOUT_BIN=$(command -v timeout || true)
+GUARD=""
+[ -n "$TIMEOUT_BIN" ] && GUARD="$TIMEOUT_BIN 60"
+
 # 行尾宏只影响词法分析的行号统计，与 CMakeLists 的取值保持一致
 case "$(uname -s)" in
     Darwin | Linux) NEWLINE=LF ;;
     *) NEWLINE=CRLF ;;
 esac
 
-echo "构建编译器：$CXX -std=c++11 -D$NEWLINE"
-if ! "$CXX" -std=c++11 -D$NEWLINE -I "$REPO/src" \
-    "$REPO"/src/*.cpp "$REPO"/src/*/*.cpp -o "$WORK/shaolang" > "$WORK/build.log" 2>&1; then
-    echo "FAIL 编译器构建失败"
-    tail -20 "$WORK/build.log"
-    exit 1
+# CI 里已经用 CMake 并行构建过，通过 SHAOLANG 传进来，避免每次串行重编全部源码
+S=${SHAOLANG:-}
+if [ -z "$S" ]; then
+    echo "构建编译器：$CXX -std=c++11 -D$NEWLINE"
+    if ! "$CXX" -std=c++11 -D$NEWLINE -I "$REPO/src" \
+        "$REPO"/src/*.cpp "$REPO"/src/*/*.cpp -o "$WORK/shaolang" > "$WORK/build.log" 2>&1; then
+        echo "FAIL 编译器构建失败"
+        tail -20 "$WORK/build.log"
+        exit 1
+    fi
+    S=$WORK/shaolang
+    echo "编译器构建耗时 ${SECONDS}s"
+else
+    echo "使用已有编译器：$S"
 fi
-S=$WORK/shaolang
 
 # 深栈帧用例不入库：局部变量数量决定帧大小，用于验证超出 x29 立即数寻址范围的访存，
 # 期望值 N*(N+1)/2 由 shell 算术独立算出，不来自编译器输出
@@ -68,8 +82,17 @@ check() {
     local name=$1 src=$2 expected=$3
     local exe=$WORK/$name
     rm -f "$exe"
-    if ! "$S" "$src" -o "$exe" > "$WORK/$name.log" 2>&1; then
-        echo "FAIL $name : 编译命令返回失败"
+    # GUARD 为空时要展开成零个词，所以不能加引号
+    $GUARD "$S" "$src" -o "$exe" > "$WORK/$name.log" 2>&1
+    local code=$?
+    if [ $code -eq 124 ]; then
+        echo "FAIL $name : 编译超过 60s"
+        tail -3 "$WORK/$name.log"
+        fail=$((fail + 1))
+        return
+    fi
+    if [ $code -ne 0 ]; then
+        echo "FAIL $name : 编译命令返回 $code"
         tail -3 "$WORK/$name.log"
         fail=$((fail + 1))
         return
@@ -82,8 +105,13 @@ check() {
     fi
     local input=/dev/null
     [ -f "$CASES/$name.in" ] && input=$CASES/$name.in
-    "$exe" < "$input" > "$WORK/$name.out" 2>&1
-    local code=$?
+    $GUARD "$exe" < "$input" > "$WORK/$name.out" 2>&1
+    code=$?
+    if [ $code -eq 124 ]; then
+        echo "FAIL $name : 运行超过 60s"
+        fail=$((fail + 1))
+        return
+    fi
     if ! diff -u "$expected" "$WORK/$name.out" > "$WORK/$name.diff"; then
         echo "FAIL $name : 输出不符"
         cat "$WORK/$name.diff"
@@ -100,7 +128,7 @@ check() {
 }
 
 echo
-echo "== 本机编译并运行 =="
+echo "== 本机编译并运行 == (第 ${SECONDS}s)"
 for i in "${!names[@]}"; do
     check "${names[$i]}" "${srcs[$i]}" "${expects[$i]}"
 done
@@ -108,7 +136,7 @@ done
 # 交叉产物只验证到装配层：能生成 ELF aarch64 汇编并被工具链接受即可，
 # 本机没有对应链接器或模拟器时跳过，不作为失败
 echo
-echo "== linux-arm64 交叉装配 =="
+echo "== linux-arm64 交叉装配 == (第 ${SECONDS}s)"
 printf '\t.text\n\tadd x0, x0, #1\n\tret\n' > "$WORK/probe.s"
 if ! "$CC" --target=aarch64-linux-gnu -c "$WORK/probe.s" -o "$WORK/probe.o" > "$WORK/probe.log" 2>&1; then
     echo "跳过：本机工具链不支持 aarch64-linux-gnu"
@@ -117,12 +145,12 @@ else
     cross_fail=0
     for i in "${!names[@]}"; do
         name=${names[$i]}
-        if ! "$S" "${srcs[$i]}" -S --target=linux-arm64 -o "$WORK/$name.linux.s" > "$WORK/$name.linux.log" 2>&1
+        if ! $GUARD "$S" "${srcs[$i]}" -S --target=linux-arm64 -o "$WORK/$name.linux.s" > "$WORK/$name.linux.log" 2>&1
         then
             echo "FAIL $name : 生成 linux 汇编失败"; tail -3 "$WORK/$name.linux.log"
             cross_fail=$((cross_fail + 1)); continue
         fi
-        if ! "$CC" --target=aarch64-linux-gnu -c "$WORK/$name.linux.s" -o "$WORK/$name.linux.o" > "$WORK/$name.linux.asm.log" 2>&1
+        if ! $GUARD "$CC" --target=aarch64-linux-gnu -c "$WORK/$name.linux.s" -o "$WORK/$name.linux.o" > "$WORK/$name.linux.asm.log" 2>&1
         then
             echo "FAIL $name : 装配 linux 汇编失败"; tail -5 "$WORK/$name.linux.asm.log"
             cross_fail=$((cross_fail + 1)); continue
@@ -134,5 +162,5 @@ else
 fi
 
 echo
-echo "通过 ${pass}，失败 ${fail}"
+echo "通过 ${pass}，失败 ${fail}，共耗时 ${SECONDS}s"
 [ $fail -eq 0 ] || exit 1

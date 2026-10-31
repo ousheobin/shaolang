@@ -39,10 +39,14 @@ jobs:
         os: [ubuntu-24.04-arm, macos-latest]
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
 
     defaults:
       run:
         shell: bash
+
+    env:
+      SHAOLANG: ${{ github.workspace }}/build/shaolang
 
     steps:
       - uses: actions/checkout@v4
@@ -51,6 +55,11 @@ jobs:
         run: |
           uname -m
           "${CXX:-c++}" --version | head -1
+
+      - name: Build compiler
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
 
       - name: Run end-to-end tests
         run: test/e2e/run.sh
