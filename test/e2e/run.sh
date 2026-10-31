@@ -91,7 +91,7 @@ check() {
         return
     fi
     if [ -f "$CASES/$name.exit" ] && [ "$(cat "$CASES/$name.exit")" != "$code" ]; then
-        echo "FAIL $name : 退出码 $code，期望 $(cat "$CASES/$name.exit")"
+        echo "FAIL $name : 退出码 ${code}，期望 $(cat "$CASES/$name.exit")"
         fail=$((fail + 1))
         return
     fi
@@ -129,10 +129,10 @@ else
         fi
         cross_pass=$((cross_pass + 1))
     done
-    echo "装配通过 $cross_pass，失败 $cross_fail"
+    echo "装配通过 ${cross_pass}，失败 ${cross_fail}"
     fail=$((fail + cross_fail))
 fi
 
 echo
-echo "通过 $pass，失败 $fail"
+echo "通过 ${pass}，失败 ${fail}"
 [ $fail -eq 0 ] || exit 1
