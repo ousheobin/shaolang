@@ -1,0 +1,381 @@
+# ShaoLang 编译器设计文档
+
+配套文档：[语言语法](grammar.md) · [English version](compiler-design_EN.md)
+
+---
+
+## 1. 项目定位
+
+ShaoLang 编译器是一个**单遍（one-pass）语法导向翻译（syntax-directed translation）编译器**：
+
+- 没有独立的 AST 阶段。语法分析函数在归约的同时直接调用 IRGenerator，把语句/表达式翻译成三地址码。
+- 默认产物是**中间代码文本**（优化前 + 优化后各打印一次）；带 -S 时产物换成**ARM64 (aarch64) 汇编**，Mach-O 与 ELF 两种格式；只给 -o 不给 -S 时，编译器自己调用本机工具链把汇编装配、链接成可执行文件。
+- 优化只有一个 pass：函数级常量传播（含代数化简与常量条件跳转化简），建立在自研的控制流图 + 迭代数据流框架上。
+- 支持多文件命令行，但文件之间互相独立，符号表不共享。
+
+### 1.1 流水线
+
+```
+源文件（每个文件独立编译一次）
+  └─> FileScanner      commons/scanner.cpp     128B 缓冲、行列定位、EOF 哨兵
+      └─> Lexer        lexer.cpp               记号流（-t 时由 Parser::move 打印）
+          └─> Parser   parser.cpp             LL(1) 递归下降，语义动作内联
+              ├─> SymbolTable    symbols/*     作用域路径式变量表 / 函数表 / 字符串表
+              └─> IRGenerator    ir_generator.cpp
+                     │            表达式与语句 → 三地址码
+                     ▼
+              Function.interCodeCollection   （每个函数一份线性指令序列）
+                     │
+                     ▼  optimize()：逐函数执行一次
+              DataFlowGraph   dataflow/*      建块、连边、可达性
+                     └─> ConstPropagation     optimization/*  格迭代 + 两轮化简
+                              └─> Function.optCode
+                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼ 缺省                           ▼ -S / -o
+              show_all_code() 打印 IR        AArch64CodeGenerator  codegen/*
+                                            （Mach-O / ELF 汇编）
+                                                │            └─ -o 无 -S：Linker 调 cc + codesign 出可执行文件
+```
+
+SymbolTable 与 IRGenerator 互相持有指针：登记变量这一步就会生成 OP_DECLARE（见 §3.4）。
+
+两条出口由 Compiler::compile() 分岔（compiler.cpp:17-31）：缺省是解析 → 打印原始 IR → optimize() → 打印优化后 IR；带 -S 或 -o 时直接返回，IR 不打印，汇编由另一个入口 Compiler::emit_assembly()（compiler.cpp:33-37）产出，它调 optimize()（Function::do_optimize 有 is_opt 幂等保护，重复调用是空操作）。
+
+---
+
+## 2. 模块地图
+
+| 路径 | 职责 | 关键类型 |
+|---|---|---|
+| src/shaolang.cpp | CLI：参数解析、按文件构造流水线、汇总诊断数 | main |
+| src/compiler.{h,cpp} | 组装 Lexer/Parser/SymbolTable/IRGenerator 并驱动 | Compiler |
+| src/commons/common.h | 全局枚举与文案表：记号、语法错误、语义错误、IR 操作码；前向声明 | LexicalType syntaxError semanticError InterCodeOperator |
+| src/commons/scanner.{h,cpp} | 带缓冲的字符流 + 行列定位 | FileScanner |
+| src/commons/token.{h,cpp} | 记号对象（含 ID/int/char/string 四类携带值） | Token IDToken IntegerToken CharToken StringToken |
+| src/lexer.{h,cpp} | 记号识别、注释跳过、字面量取值、词法错误恢复 | Lexer |
+| src/parser.{h,cpp} | 递归下降语法分析 + 错误恢复 + 语义动作 | Parser |
+| src/symbols/variable.{h,cpp} | 变量/常量/临时量模型，含类型、初值、作用域路径、左值属性、优化编号 | Variable |
+| src/symbols/function.{h,cpp} | 函数符号：形参、指令集合、返回点、优化后代码 | Function |
+| src/symbols/symbol_table.{h,cpp} | 作用域路径式变量表、函数表、字符串常量表、指令派发 | SymbolTable |
+| src/ir/inter_code.{h,cpp} | 三地址指令记录（5 种构造形态）+ 打印 | IntermediateInstruct |
+| src/ir/inter_code_collection.{h,cpp} | 线性指令序列 + leader 标记 | InterCodeCollection |
+| src/ir_generator.{h,cpp} | 表达式/语句 → 三地址码的下落规则，跳转回填栈 | IRGenerator |
+| src/dataflow/block.{h,cpp} | 基本块：内部指令 + prev/next 边 + in/out 值集 | Block |
+| src/dataflow/data_flow_graph.{h,cpp} | 建块、连边、可达性、死块摘边、导出优化后线性码 | DataFlowGraph |
+| src/optimization/const_opt.{h,cpp} | 常量格迭代分析 + 代数化简 + 常量跳转化简 | ConstPropagation |
+| src/codegen/target.{h,cpp} | 编译目标三元组（架构 × 平台）、--target= 解析、支持性判定 | CompileTarget Architecture SystemPlatform |
+| src/codegen/aarch64_codegen.{h,cpp} | 优化后 IR → ARM64 汇编：帧分配、调用约定、静态数据、两种目标格式 | AArch64CodeGenerator |
+| src/codegen/linker.{h,cpp} | 用本机工具链把汇编装配、链接成可执行文件，macOS 上补 ad-hoc 签名 | Linker |
+| src/commons/type_util.{h,cpp} | 类型归一、相容判定、偏移步长、类型宽度 | TypeUtil |
+| src/commons/error.{h,cpp} | 静态诊断输出与计数 | Error |
+| src/commons/argument.{h,cpp} | 静态开关（-t / -b / -S / 生成可执行文件） | CompilerArguments |
+
+依赖方向基本是**单向**的：commons ← symbols/ir ← ir_generator ← parser ← compiler ← shaolang.cpp；dataflow/optimization 只被 Function::do_optimize() 使用，codegen 读的是优化后的序列（Function::get_emitted_code()，function.cpp:111-116），但它会把帧偏移写回 Variable 符号本身（见 §5.10）。common.h 里集中前向声明以避免循环 include。
+
+---
+
+## 3. 阶段设计
+
+### 3.1 FileScanner（commons/scanner.cpp）
+
+- BUFFER_SIZE = 128 的 fread 缓冲，move() 一次返回一个字符，到文件尾返回 EOF_CHAR = (char)-1（scanner.h:12-15）。选 (char)-1 而不是 EOF 的 int 形式，是为了不与 UTF-8 字节冲突。
+- 行列号靠 #ifdef LF / #elif CRLF 分支在换行时递增（scanner.cpp:64-74）；LF/CRLF 由 CMakeLists.txt 按平台定义，两个都没定义时行号恒为 1。
+- 打开失败时打印一条提示但**不中止**，之后 move() 一直返回 EOF（scanner.cpp:47-51），因此坏路径的文件表现为「空文件」。
+
+### 3.2 Lexer（lexer.cpp）
+
+- 主循环 next_token()：跳空白 → 按首字符分类派发（标识符 / " / ' / 数字 / 运算符）；文件尾产出并缓存一个 END 记号。
+- 关键字用匿名 namespace 里的静态表 + 线性查表（lexer.cpp:20-43），未命中即 ID。
+- 双字符运算符在 read_operator() 的 switch 里前瞻一格处理（lexer.cpp:242-296）；/ 之后是 / 或 * 时走注释分支并**返回 NULL**。
+- 错误恢复策略：**词法错误不产生记号**。read_number/read_char/read_string/invalid_operator 报错后返回 NULL，主循环 continue 重新扫描（lexer.cpp:78-81）。这样 1abc、1.5、未闭合字符串只会污染一个记号位置。
+- 所有权：current_token 在被替换前 delete，因此 Token* 只在「下一次调用之前」有效——Parser 必须在下一个 move() 前用完它。
+
+### 3.3 Parser（parser.cpp）
+
+LL(1) 递归下降，每个非终结符一个 void/Variable* 成员函数，函数头上的注释写的就是该文法产生式（如 parser.cpp:77-79）。
+
+- **选集用宏表达**（parser.cpp:14-22）：ALL_TYPES、ALL_EXPR_KW、ALL_STATEMENT_KW 等，本质是 FIRST 集合的手写近似。这些宏是语法分发唯一的依据，也因此成为语法缺口的来源——一条语句的关键字只要没进 ALL_STATEMENT_KW，就永远到不了 statement()（输入输出的 K_INPUT/K_OUTPUT 是后来补进去的，parser.cpp:22）。
+- **匹配**：check_and_move(type)（parser.cpp:69-75）匹配则消费。
+- **恢复**：recovery(in_follow_set, lost, error[, delete_all])（parser.cpp:45-67）。in_follow_set 为真 → 判定「缺失」，只报 xxx_LOST，不消费（相当于插入空产生式继续）；为假 → 报 xxx_ERROR，默认丢弃 1 个记号，delete_all 版本则一直跳到 )、}、;、END。这是简化的 panic mode，不做产生式级重入。
+- **语义动作内联**：value_definition 直接返回 Variable*，expr 链每个函数都返回「结果存储点」（Variable*），跳转回填通过 IntermediateInstruct*& 出参传出（while_statement、if_statement）。
+- 因为没有 AST，**「先使用后声明」在结构上不可行**：调用点解析时就要在函数表里查到目标。
+
+### 3.4 SymbolTable（symbols/symbol_table.cpp）
+
+| 数据结构 | 作用 |
+|---|---|
+| unordered_map&lt;string, vector&lt;Variable*>*> variableTable | 同名变量按作用域路径分层共存；字面量常量也塞进这张表（不参与重复检查，symbol_table.cpp:78-80） |
+| vector&lt;int> scope_vector | 当前作用域路径；enter_new_scope() 递增 current_scope_id 并压入，exit_current_scope() 弹出（文件级作用域不弹，symbol_table.cpp:34-42） |
+| unordered_map&lt;string, Function*> functionTable | **每个名字一个槽位**，所以同名不同参不是重载；配合 has_declare 标志区分「原型 / 定义 / 重复定义」 |
+| vector&lt;Variable*> globalVariables | 深度为 1 的变量清单，供常量传播取全局初值与 kill 集合 |
+| unordered_map&lt;string, Variable*> constStringTable | 字符串常量表，目前只写不读 |
+| variable_define_order_list / function_define_order_list | 后者是三处「按定义顺序」的唯一依据：打印 IR、逐函数优化、以及后端产码（get_defined_functions，symbol_table.cpp:197-208 会滤掉只有原型的声明）；前者仍只写不读 |
+
+查找算法 get_variable()（symbol_table.cpp:106-127）：在候选列表里挑「作用域路径是当前路径前缀且最长」的那个，即就近可见。找不到报 使用未定义变量 并返回 NULL，上层运算对 NULL 容忍（静默返回）。
+
+**关键耦合点**：add_variable() 末尾会调用 irGenerator->generate_variable_init(variable)（symbol_table.cpp:100-102）。也就是说「符号表登记」这个动作本身就产生 OP_DECLARE 指令；IRGenerator 也反向持有 SymbolTable。两者互相依赖，构造函数注入（compiler.cpp:12-14）。
+
+指令派发 add_inter_instruct()（symbol_table.cpp:209-215）：只有 current_function 非空时才追加，否则 delete。这就是「全局作用域的表达式指令被静默丢弃」的实现来源。
+
+### 3.5 Variable（symbols/variable.cpp）
+
+一个类同时承担 5 种角色，靠标志位区分：
+
+| 构造 | 用途 | 关键标志 |
+|---|---|---|
+| Variable(name, scope, type, init) | 用户变量声明 | is_left_value = true |
+| Variable(Token*) | 字面量，名字固定 &lt;&lt;int&gt;&gt; / &lt;&lt;char&gt;&gt; / &lt;&lt;string&gt;&gt; | is_constraint = true, is_left_value = false |
+| Variable(int) | 优化用的整型常量对象 | 同上 |
+| Variable(scope, type, is_ptr) / Variable(scope, var) | 运算临时量，名字 .L&lt;tempId++> | is_temp_store = true |
+| Variable() | 全局共享的 void 值 | TK_VOID + is_pointer |
+
+字段分三类：类型/值（type、integer_initial_value、char_initial_value、str_initial_value）、引用属性（is_pointer、is_array、array_length、ptr —— **语法不可达，见语法文档 §2.4**）、存储位置（frame_offsize 由后端的 allocate_frame 写入并读取，Function 侧的 frame_max_depth、current_esp_ptr、scope_esp 仍只是占位）。
+
+opt_index 是数据流分析给变量分配的格下标，check_init()/is_init() 决定「字面量初值可折进声明」还是「需要额外赋值指令」。
+
+静态计数器 Variable::tempId（variable.cpp:17）同时被临时变量命名（variable.cpp:57）和指令标号生成（inter_code.cpp:113）使用，因此 .L&lt;n> 名字空间是**两者共用、全局单调**的——跨函数不会撞名，但也不能靠数字推断类别。
+
+### 3.6 中间代码（ir/inter_code.{h,cpp}）
+
+指令记录是固定 6 槽位的三地址形态 + 标号：
+
+```
+label | op | resultVar | leftArg | rightArg | jumpTarget | function | block
+```
+
+5 个构造器对应 5 种使用形态：(op, result, left, right) 算术/比较；(op, fun, result) 调用（result 为空即 OP_PROC）；(op, var) 声明/压参；(op, target, left, right) 跳转；() 空指令即**标号伪指令**（inter_code.cpp:41-44）。
+
+跳转目标是**指针而不是索引**，因此回填零成本：语句 lowering 时先 new IntermediateInstruct() 占位，语义完成时把占位对象本身 add_inter_instruct() 进序列（ir_generator.cpp:356-401）。
+
+操作码一览（枚举 common.h:147-161，与之逐项对应的文案表 common.h:163-176，display 文本见 inter_code.cpp:162-205）：
+
+| 操作码 | 打印形式 | 生成位置 |
+|---|---|---|
+| OP_EMPTY_INST | .L&lt;n>（只有标号行） | while/if/函数返回点的占位标号 |
+| OP_DECLARE | dec v | generate_variable_init |
+| OP_ENTER / OP_EXIT | entry / exit | generate_function_head/tail |
+| OP_ASSIGN | r = l | generate_assign |
+| OP_ADD/SUB/MUL/DIV/MOD | r = l op rr | 二元运算；inc/dec 也复用它（r = r + step） |
+| OP_MINUS / OP_NOT | r = -l / r = !l | 一元运算 |
+| OP_GT/GE/LT/LE/EQ/NEQ | r = l cmp rr | 比较（结果恒 int 临时量） |
+| OP_AND / OP_OR | r = l && rr | 逻辑运算（**非短路**） |
+| OP_LEA / OP_PTR_SET / OP_PTR_GET | 无专属格式，落到 default 分支 | 只在引用类赋值/取负路径出现，语法不可达 |
+| OP_JMP | goto L | while 回边、if/else 汇合、break/continue |
+| OP_JMP_FALSE | if c no true jmp to L | while / if 条件 |
+| OP_JMP_TRUE / OP_JMP_NEQ | — | 前端不生成，只在 is_jmcond() 与跳转化简里被处理 |
+| OP_ARG | arg v | 实参压栈 |
+| OP_PROC | f( | void 调用 |
+| OP_CALL | r = f() | 有返回值调用 |
+| OP_READ | read v | input 语句（ir_generator.cpp:440-453） |
+| OP_PRINT | print v | output 语句（ir_generator.cpp:455-461） |
+| OP_RETURN / OP_RETURN_WITH_VAL | goto L / return v then goto L | return 语句，目标为函数返回点 |
+
+两个小瑕疵值得修：OP_MOD 打印成 %%（inter_code.cpp:177），default 分支无条件解引用 resultVar（inter_code.cpp:202）——OP_LEA/OP_PTR_SET/OP_JMP 之外的异常指令一旦落到这里就是空指针。
+
+### 3.7 IR 下落规则（ir_generator.cpp）
+
+**表达式**：每个运算都「新建临时量 + 一条三地址指令」，不做复用、不产生寄存器分配信息。
+
+```
+a + b            →  dec .Lt ; .Lt = a + b        (generate_two_value_op → generate_add)
+a = b            →  a = b                        (结果返回左变量 a)
+a = b = c        →  b = c ; a = b                (assign_extend 对结果再扩展)
+++a              →  a = a + step                 (generate_inc_first，返回 a)
+a++              →  dec .Lt ; .Lt = a ; a = a + step   (generate_inc_last，返回 .Lt)
+!x / -x          →  dec .Lt ; .Lt = !x / -x
+f(1, 2)          →  arg 2 ; arg 1 ; dec .Lt ; .Lt = f()   (实参逆序压栈，ir_generator.cpp:70-72)
+g()  (void)      →  arg ... ; g(                 (OP_PROC，返回共享 voidVariable)
+input a          →  read a                       (generate_read，目标是已声明变量本身)
+output e         →  <e 的求值链> ; print .Lt      (generate_print 收 all_expr 的结果)
+```
+
+自增步长来自 TypeUtil::get_offset_step()：地址值（指针、数组名）为 8，其余为 1（type_util.cpp:38-41）。由于引用类语法不可达，实际恒为 1。
+
+**控制流**：head_link / tail_link 两个平行栈只由 while push/pop，break 跳 tail_link.back()、continue 跳 head_link.back()（ir_generator.cpp:403-419），因此 if 内的 break 天然指向外层 while；栈空即报「不在 while 语句下」。
+
+```
+while (c) B      →  L_head: dec .t; .t = c; if .t no true jmp L_exit
+                        B
+                    goto L_head
+                    L_exit:
+if (c) A else B  →  dec .t; .t = c; if .t no true jmp L_else
+                        A ; goto L_exit ; L_else: B ; L_exit:
+```
+
+注意 if 的 L_else 占位标号在条件指令之后才被插入序列，因此标号行出现在它自己的跳转指令之后（示例输出里 .L6 位于 y = 5 之后）。
+
+**函数**：OP_ENTER → 体 → 返回点（空指令标号）→ OP_EXIT。return 只跳到返回点，所以「函数末尾统一出口」天然存在，generate_function_tail 负责落地（ir_generator.cpp:477-487）。
+
+### 3.8 控制流图（dataflow/*）
+
+建块分两步：
+
+1. InterCodeCollection::mark_all_first_inst() 找 leader（inter_code_collection.cpp:15-39）：序列第 1、2 条与最后一条，每条跳转/条件跳转的**后继**，以及每个跳转**目标**。注意「前两条强制为 leader」是实现的额外规则，所以 entry 总是单独成块。
+2. DataFlowGraph::create_new_blocks() 顺序切块，link_blocks() 连边（data_flow_graph.cpp:41-68）：块尾不是 OP_JMP（is_jmp() 只判无向跳转，条件跳转仍算）→ 加顺序边；是跳转/条件跳转 → 加指向目标块的边。
+
+OP_RETURN* 的 target 是函数返回点而非跳转语义，因此返回后仍有顺序边指向 exit 块，出口块恒可达。
+
+边维护是显式双向的：link() 去重后同时加 prev/next，un_link() 删双向边并递归 delete_all_next_link() 摘除随之变死的块（先判 is_reachable()，不可达才剪，data_flow_graph.cpp:97-114）。write_opt_code() 按块序导出可达块的指令，得到优化后的线性码（data_flow_graph.cpp:169-180）。
+
+-b 的块转储（Block::to_string）：
+
+```
+---------------------------------
+Block:1
+- Prev:
+0
+- Next:
+2 , 3
+- Code:
+dec s
+dec .L1
+.L1 = n > 1
+if .L1 no true jmp to .L2
+```
+
+### 3.9 常量传播（optimization/const_opt.cpp）
+
+标准**有限高度格上的前向流分析**，Function::do_optimize() 在建图后调用一次（function.cpp:95-109）。
+
+- 格：NAC = LONG_MIN（非常量）< 常数 c / UNDEF = LONG_MAX（未定）。meet 是 ux()（const_opt.cpp:139-151）：任一 NAC → NAC；UNDEF 单位元；两常数不等 → NAC。
+- 变量编号（opt_index）覆盖三类：全局变量（用 check_init() 折进声明的字面量作初值，未初始化 UNDEF，非基本类型 NAC）、形参（一律 NAC）、本函数 OP_DECLARE 的局部/临时量。开工前先把这三类的 opt_index 复位为 -1，避免相邻两次分析残留（const_opt.cpp:22-33）。
+- 边界条件：入口块（block 0）的 out 直接是初值向量，其余块 in = out = UNDEF…（const_opt.cpp:90-96）。
+- 迭代：按块号从 1 到 n-1 **轮转**，每轮 union_blocks()（多前驱按位 meet）+ transform_block()（块内逐指令 fx），任何一块 out 变化就继续（const_opt.cpp:97-106）。没有工作队列，复杂度是 O(轮数 × 块数)。
+- fx 转移函数（const_opt.cpp:176-304）：表达式指令按操作数格值求值（除零、模零 → NAC）；OP_READ 把目标变量刷成 NAC（外部输入在本次分析内不可知）；OP_PRINT 不改变任何值；OP_PTR_SET 与非基本类型的 OP_ARG 把**整个**值集刷成 NAC；OP_LEA/OP_PTR_GET 只把结果置 NAC；OP_PROC/OP_CALL kill 所有全局变量与调用结果。
+- 化简一：algebra_simplify()（const_opt.cpp:306-456）
+  - 结果已知为常数 → 整条指令改写成 storePoint = 常数；
+  - 已知的恒等/零元规则：x+0→x、0-x→-x、x-0→x、x*0→0、x*1→x、0/x→0、x/1→x、x%0→0、x%1→0、0&&x→0、非0&&x→x!=0、非0||x→1、0||x→x!=0；
+  - 否则把已求得的一侧操作数替换成常数对象（部分折叠）；
+  - OP_ARG / OP_RETURN_WITH_VAL 的操作数已知常数时直接换成常数。
+  新常数通过 symbolTable->add_variable() 登记——因为是字面量，generate_variable_init 立即返回、不产生指令（symbol_table.cpp:56-61 与 ir_generator.cpp:465-467）。
+- 化简二：condition_jump_simplify()（const_opt.cpp:472-531）
+  - 条件为常数 → 判定「是否跳转」；
+  - 跳且目标就是顺序后继 → 删掉指令（自然落入）；目标不是后继 → 退化成 OP_JMP；
+  - 不跳 → 删指令、补顺序边，若目标不是后继再 un_link 摘掉跳转边（注释里明确了「先补顺序边再摘跳转边」的顺序依赖）。
+
+实测（-[int] main(){ int x = 1 + 2 * 3; int y = x * 1 + 0; if (y > 10) y = 5; else y = 6; return y; }）：
+
+```
+优化前                                优化后
+dec .L1                               dec .L1
+.L1 = 2 * 3                           .L1 = 6
+dec .L2                               dec .L2
+.L2 = 1 + .L1                         .L2 = 7
+dec x                                 dec x
+x = .L2                               x = 7
+.L3 = x * 1                    →      .L3 = 7
+.L4 = .L3 + 0                         .L4 = 7
+...                                   ...
+.L5 = y > 10                          .L5 = 0
+if .L5 no true jmp to .L6             goto .L6
+```
+
+### 3.10 后端：ARM64 汇编生成与本机链接（codegen/*）
+
+-S 把优化后的三地址码翻成 aarch64 汇编，目标由 --target= 决定（codegen/target.cpp：host_target 按编译宏 MAC_OSX / LINUX / WINDOWS 取本机，parse_target 认 macos-arm64 / darwin-arm64 / apple-arm64 / linux-arm64 / aarch64-linux，target_supported 明确拒绝 windows-arm64——Windows ARM64 要求调用方预留 shadow space，汇编形态也与 Mach-O / ELF 都不同）。只给 -o 而不给 -S 时，编译器会再把汇编交给本机工具链装配、链接成可直接运行的可执行文件（见本节末）。
+
+寄存器布局是**静态写死的**（aarch64_codegen.cpp:11-24）：x0 装左值、x1 装右值、x2 装结果、x3 装取模的商，x0..x7 同时就是传参寄存器（VALUE_REGISTERS），x10 只用于地址计算、x11 只用于栈实参搬运，故意避开 x0..x7。没有寄存器分配阶段：每个有存储的变量始终待在栈槽或静态数据里，寄存器只是每条指令内部的临时搬运工。
+
+顶层流程（aarch64_codegen.cpp:51-62）：输出 .text（Mach-O 额外加 .subsections_via_symbols，让汇编器知道每个符号可自成数据段）→ 按**定义顺序**逐函数生成 → 末尾统一出静态数据。函数清单来自 SymbolTable::get_defined_functions()（symbol_table.cpp:197-207），只有原型没有函数体的声明被排除，因此不会为它们产码——但优化器没有做同样的过滤，见 §5.8。
+
+单函数（generate_function，aarch64_codegen.cpp:64-88）：取 get_emitted_code()（有优化结果就用优化后的，function.cpp:111-116）→ allocate_frame → 符号头（Mach-O 符号带下划线前缀，ELF 还要 .type/@function 与 .size）→ 序言 → 形参落栈 → 逐条翻译 → 若序列里没遇到 OP_EXIT 就补一段退栈序列，防止出口块被优化掉后函数直接落进下一个函数体。
+
+存储模型是**全部 64 位有符号整数**，每个有存储的变量占一个 8 字节槽；storage_of()（371-388）把操作数分成五类：
+
+| StorageKind | 判定 | 取值的写法 |
+|---|---|---|
+| STORAGE_IMMEDIATE | 字面量 | mov dest, #n；超出单条 mov 编码范围时用 movz 加若干 movk 拼（load_immediate，398-413） |
+| STORAGE_STRING | C_STRING 字面量 | 值就是它的静态符号地址（adrp+add） |
+| STORAGE_FRAME | frame_offset ≠ 0，即局部变量与临时量 | ldur dest, [x29, #负偏移] |
+| STORAGE_STATIC | 作用域路径长度为 1，即文件级全局 | 先取符号地址再 ldr |
+| STORAGE_NOWHERE | void / 空 / 已被上面排除的情况 | mov dest, xzr |
+
+最后一类是**静默兜底**：一个既没有帧槽又不是全局的变量会被当成 0，不会报错（§5.9 的实测缺陷正落在这里）。
+
+帧分配（allocate_frame，90-112）先给形参按声明顺序发负偏移（形参的 DECLARE 在指令序列之前，得单独算），再扫一遍 OP_DECLARE 给局部量与临时量发偏移；void、字面量、字符串、文件级全局、以及**已有偏移的变量**都被跳过。frame_size = align_up(8 × 槽数, 16)。序言（114-126）在 frame_size 超过 4095 时改用 mov x10 / sub sp, sp, x10，因为 add/sub 的立即数只有 12 位无符号范围。槽位寻址同理（slot_ref / slot_address，390-396 与 415-425）：偏移落在 [-256,255] 就直接用 [x29, #off] 的 ldur/str，超出先用 x10 算出槽地址再访存，而 x10 里的这个大数本身就走 load_immediate。
+
+调用约定（emit_arguments / emit_call，128-169）：实参寄存器 x0..x7，第 9 个起由调用者放栈——sub sp 预留 16 字节对齐的空间、用 x11 逐个搬运、bl 之后 add sp 回收；被调方把 x0..x7 存进各自帧槽，第 9 个起的形参则从「保存后的 fp 之上」ldur 出来再存进自己的槽。返回值固定在 x0：OP_CALL 把 x0 存进结果变量（277-280），void 调用走 OP_PROC（281-283），带值的 return 则是「把表达式加载进 x0，再 b 到出口标号」（284-287），出口标号上挂 OP_EXIT 统一退栈。
+
+参数序列与产码顺序是**相互咬合**的：前端把一个有返回值的调用翻译成 arg a; arg b; dec .Lt; .Lt = f()，返回临时量的 OP_DECLARE 正好插在实参序列和调用之间，所以 emit_body 对 OP_DECLARE 网开一面不清空 pending_args，其余指令才把残留参数丢掉（274-276、325-329）。同样因为这条规则，OP_DECLARE 还要负责把局部变量的字面初值写进栈槽（191-197）：前端遇到 int a = 3; 时只登记符号、不生成 OP_ASSIGN，初值折在 Variable 自己身上，后端必须补出 mov + str。
+
+标号处理（local_label，541-547）：IR 里的 .L 前缀在 Mach-O 下会被汇编器当成外部符号，条件跳转因此拒绝以它为目标，所以输出时剥成 L 开头的局部标号（ELF 保留原样）。
+
+输入输出的降级（306-319、360-369、580-595）：格式串按操作数字面类型选——char 用 %c、字符串用 %s、其余用 %lld；OP_READ 取变量地址后调 scanf（%c 先 str xzr, [x1] 清槽，避免 scanf 只写低字节时高位残留栈垃圾），OP_PRINT 走 emit_vararg_call：Apple ARM64 要求调用者在 sp 处预留 64 字节窗口放可变参数，所以同一个值既留在 x1 又写入 [sp]，Linux 侧只依赖 x1，两个位置都写即可两边正确。格式串本身也走 string_symbol 的去重表。
+
+静态数据（emit_static_data，489-539）：字符串去重后进 __TEXT,__cstring / .rodata，全局变量进 __DATA,__data / .data（未初始化 .zero 8，已初始化 .quad 值）；Mach-O 下两者都加 .private_extern（ELF 用 .hidden + .type/@object），因为 adrp 需要真实符号而不是仅本文件可见的临时标号。字符串内容经 escape()（597-615）处理：双引号与反斜杠加转义，不可打印字节写成固定三位八进制，避免和后续数字粘连。
+
+装配与链接（codegen/linker.cpp）是独立一步：linkable_on_host()（19-29）比较本机平台与目标平台，不一致就只出汇编；assemble_and_link()（31-48）把中间汇编写到 TMPDIR 下一个按进程号和文件序号命名的 .s（shaolang.cpp:21-30），用 cc -o 驱动系统工具链装配链接，macOS 上再补一次 codesign --force --sign - 的 ad-hoc 签名（Apple Silicon 内核拒绝执行未签名代码），成功后删掉临时 .s，失败则保留并打印命令。路径参数一律走 shell_quote() 单引号转义。
+
+实测覆盖面（本机 arm64，cc + ad-hoc 签名）：全局变量与 char 全局、局部字面初值、8 个以内与超过 8 个实参的调用（10 个实参求和 55 正确）、递归（fib(10) = 55）、void 调用、while / if / break / continue、input（int 与 char）、字符串 output、300 与 600 个局部变量两种深度（后者已走 mov x10 的超窗口路径）、加减乘除与取模、负数、以及 123456789 这类需要 movz + movk 拼出来的大常量。同一程序在 --target=linux-arm64 下只有六处形态差异：无 .subsections_via_symbols、符号不带下划线前缀、多了 .type/@function 与 .size、段名换成 .rodata / .data（全局还额外加 .hidden + .type/@object）、页引用由 adrp+add @PAGE/@PAGEOFF 换成 adrp + add :lo12:、局部标号保留 IR 原本的 .L 前缀。交叉格式可在本机出文，但要真正的交叉汇编器才能验证链接。
+
+### 3.11 诊断系统（commons/error.{h,cpp}）
+
+- Error 全是静态成员：error_amount / warning_amount 跨文件累计（shaolang.cpp:145-148 打印总计），Error::scanner 由 Lexer 构造时注入以取行列位置。
+- 错误文案不写在抛出点，而是四张与枚举**顺序严格对应**的表：typeName / syntaxErrorHints / semanticErrorHints / interOpHints，每张表后都跟一个 static_assert 保证枚举扩展时不会错位（common.h:49-50, 88-89, 143-144, 178-179）。抛出点只写 SE_ERROR(semanticErrorHints[XXX])。
+- 只有 Error / Warning 两级，没有 fatal：诊断之后流程照常推进，源文件有错也照样走完解析与优化，进程退出码仍是 0（只有命令行本身不合法才返回 2，见 §4）。ErrorNames 里 [Waring] 拼写有误（error.cpp:15）。
+- 位置语义要留意：打印的是扫描器**当前**读到的位置，而不是出错构造的起点，所以一条错误的行列经常落在问题代码之后（这是语法文档 §7.8 的根因）。
+
+---
+
+## 4. CLI 与构建
+
+```
+shaolang 源文件 [options]
+  -h                帮助            （→ CompilerArguments::showHelp）
+  -t                打印词法记号流   （Parser::move() 里逐条打印）
+  -b                打印数据流基本块 （Function::do_optimize() 里打印）
+  -S                只输出目标机汇编 （→ CompilerArguments::emitAssembly，走 Compiler::emit_assembly）
+  -o <文件>         配合 -S 时汇编写进该文件；不给 -S 时装配并链接成可执行文件
+  --target=<目标>   macos-arm64 / darwin-arm64 / apple-arm64 / linux-arm64 / aarch64-linux，缺省本机
+```
+
+-S 与 -o 的组合决定产物（shaolang.cpp:88-89 把 generateExecutable 定义成「有 -o 且没有 -S」）：-S 加 -o 写汇编文件，-S 不加 -o 汇编打到标准输出，只给 -o 就写临时 .s、装配链接、打印一行 已生成可执行文件 加目标路径，并删掉临时文件，链接失败则保留 .s 并回显命令；目标平台与本机不同只给 -o 时会提示改用 -S（Linker::linkable_on_host，linker.cpp:19-29）。两个开关都不带就是缺省的 IR 打印。
+
+命令行层的拒绝路径都返回 2：无法识别的选项、-o 后没有文件名、--target= 取值不认识、目标暂不支持（windows-arm64 会给出原因）、-o 配多个源文件、-o 的目标文件打不开、临时汇编文件写不进去（shaolang.cpp:44-152）。**源文件本身的语法/语义错误不改变退出码**，仍然是 0，只是不出目标代码并提示 源文件存在错误，没有生成目标代码。
+
+错误门是**按文件**判断的：编译每个文件前记下 Error::get_error_amount()，之后比较差值（shaolang.cpp:97-104），所以前一个文件的错误不会阻止后一个文件出码。
+
+- build.sh 走 mkdir build && cmake ../ && make；CMakeLists.txt 声明 cmake_minimum_required(VERSION 2.8) 而 README 要求 3.6+，并按平台 -DLF / -DCRLF；codegen/ 四个文件都已在源文件列表里。
+- 没有 cmake 时可直接编译（本次文档核对用的就是这条）：
+  
+  c++ -std=c++11 -Isrc -DMAC_OSX -DLF $(find src -name '*.cpp') -o shaolang
+  
+  -S 的产物可以手工链接（cc -arch arm64 x.s -o x），也可以让编译器自己走完（shaolang x.sl -o x）。
+- CI：.github/workflows/ci.yml（Linux、macOS）与 appveyor.yml（Windows MSVC）只跑构建。
+- 仓库里没有自动化测试。语法/语义与设计结论的核对方式：写 .sl 样例喂给上面编出的二进制，比对 IR 文本、诊断信息，以及 -S 产物经汇编链接后的实际运行输出。
+
+---
+
+## 5. 设计中需要知道的取舍
+
+1. **无 AST 换来的代价**：代码路径短（解析即产出 IR），但一切需要「回看结构」的能力都受限——前向引用、类型检查跨语句传播、后续引入新优化 pass 都要改 parser.cpp 本身。
+2. **符号表与 IR 生成器相互触发**：add_variable → generate_variable_init → add_inter_instruct。想加一个「只登记不产码」的符号（如优化用的常数）必须依赖 is_literal_value() 短路，容易踩到隐式约定。
+3. **裸指针 + 手动所有权**：Token 由 Lexer 逐个替换释放；Variable/Function/IntermediateInstruct 由符号表和指令序列持有，几乎不释放（短生命周期进程可接受）。SymbolTable::zeroVariable 等 5 个静态常量对象被所有函数共享，opt_index 复位逻辑正是为此而写。
+4. **优化是 per-function、per-run 一次**：没有跨函数常量传播、没有复制传播/CSE/DCE、没有迭代到不动点后再化简（化简只在分析后跑一遍，因此 x = 7; if (x > 10) 折叠后残留的死块不会被删除——见下条）。
+5. **跳转化简不会删除随之死掉的代码**：条件恒成立时只把条件跳转改成 OP_JMP，保留顺序边（const_opt.cpp:512-520），于是被跳过的那块仍被 write_opt_code() 导出（实测 goto .L6 之后还打印 y = 5）。只有「条件恒不成立 → 走顺序」那条分支会 un_link 并摘掉死块。
+6. **标号与临时量共用一个计数器**，且指令 display() 对标号行短路（inter_code.cpp:164-167）——打印出的 .L3 既可能是标号也可能是临时变量，只能靠是否独占一行区分。
+7. **可重入性差**：Error、CompilerArguments、Variable::tempId、Block::global_block_id 都是静态状态；多文件编译时行列号与错误计数会互相串。
+8. **只有原型、没有定义的函数会让编译器崩溃**：SymbolTable::optimize()（symbol_table.cpp:232-237）和 show_all_code()（217-222）都遍历完整的 function_define_order_list，没有像 get_defined_functions() 那样过滤 is_declare，于是原型函数也进 do_optimize —— 它的指令集合是空的，DataFlowGraph 一个基本块都没有，const_opt.cpp:92 直接取 all_blocks[0] 就越界。实测 -[int] helper(int x); 单独一个文件、甚至不调用它，退出码 139（SIGSEGV），IR 与 -S 两条路径都崩。
+9. **原型后面补定义会静默丢掉形参**：define_function()（symbol_table.cpp:144-162）发现表里已有同名原型时，沿用**原型那个 Function 对象**（连带它的形参 Variable 列表）；可函数体解析前 parameter()（parser.cpp:217-224）已经把定义里的形参**另外注册**成了一个新符号，作用域编号也不同。结果 allocate_frame 布局的是原型的形参、体内读到的是定义的形参，后者 frame_offset 一直是 0，storage_of 落到 STORAGE_NOWHERE → 形参读出来永远是 0。实测 -[int] helper(int x); 之后 -[int] helper(int x) { return x; }，output helper(3); 打印 0；把首行原型删掉就打印 3。语法文档 §4.3 用「先加原型」解决前向引用，这一步在 IR 阶段完全正确，只有走到 -S / -o 才出错。
+10. **后端不是纯消费者**：allocate_frame 用 set_frame_offset() 把布局结果写回 Variable 符号本身，同一符号表再跑一次生成会复用旧偏移；这也是「已有偏移就跳过」那条规则的来源。
+
+---
+
+## 6. 改进路线（按投入产出排序）
+
+**低成本修补**
+- 表达式语句丢掉结果却照样留下临时量（3 + 4; 化简后仍有 .L1 = 7）：化简阶段可以顺手删掉「结果临时量无人使用」的赋值。void 调用作为语句已经能走通（arg … ; f( 即 OP_PROC）。
+- 修 OP_MOD 的 %%、display() 的 default 空指针、[Waring] 拼写。
+- 诊断带出「出错构造起点」的行列（Lexer 记 token 起始位置，或 Parser 传参）。
+- 原型相关的两处缺陷：给 SymbolTable::optimize() 和 show_all_code() 加上 get_defined_functions() 那份 is_declare 过滤，原型就不会再把空块序列喂进分析（§5.8）；define_function 沿用原型 Function 时，把它的形参列表也换成定义里新注册的那一组，或者干脆拒绝「原型 + 定义」两次注册（§5.9）。这是当前 -S / -o 唯一已知的产码/流程错误。
+
+**结构升级**
+- 引入 AST（或先引入「声明/使用分离」的两遍符号解析），解锁前向引用、真正的类型检查（区分 int/char）、数组与指针语法——这些的数据结构与 IR 指令已经就位。
+- 把语义检查从 IRGenerator 里剥出来，成为独立的语义分析阶段，使符号表不再产码。
+- 优化改成工作列表 + 独立 DCE/copy propagation，并在化简后重跑一次分析。
+
+**后端**
+- 已有：ARM64 单架构、x0..x7 传参加第 9 个起的栈实参、8 字节槽帧布局（含超出 x29 立即数窗口时的 x10 变址）、Mach-O/ELF 两种格式、input/output 走 scanf/printf、本机 cc + ad-hoc 签名的直接链接。实测递归、多实参、char 输入、字符串输出、600 个局部变量都能跑出正确结果。剩余的空转字段是 Function::frame_max_depth 与 current_esp_ptr（scope_esp 只 push/pop 恒为 0 的值）。
+- 补一组「编译 → 汇编 → 链接 → 运行 → 比对输出」的端到端用例，把上面手工验证的场景固化下来；当前 CI 只构建编译器本身，不验证它产出的代码。
+- 结构上值得做的：寄存器分配（现在每条三地址指令都落一次栈）、字符串/字符的实际宽度（现在一律按 8 字节 64 位整数处理，%c 与 char 的 1 字节语义只在格式串上区分）、跳转表与更短的序言/尾言、以及 Windows ARM64 的 shadow space。

@@ -1,0 +1,382 @@
+# ShaoLang Compiler Design
+
+Companion docs: [language grammar](grammar_EN.md) · [中文版本](compiler-design.md)
+
+---
+
+## 1. What this compiler is
+
+ShaoLang is a **single-pass, syntax-directed translation compiler**:
+
+- There is no separate AST stage. Parser procedures call IRGenerator while reducing, translating statements and expressions straight into three-address code.
+- The default output is **intermediate code text** (printed once before and once after optimisation). With -S the output becomes **ARM64 (aarch64) assembly** — Mach-O or ELF flavour. Giving -o without -S makes the compiler drive the host tool chain itself and produce a runnable binary.
+- There is exactly one optimisation: function-level constant propagation (plus algebraic simplification and constant-condition jump simplification), built on a hand-rolled control flow graph and iterative data flow framework.
+- Multiple source files can be given on one command line, but each is compiled independently; symbol tables are not shared.
+
+### 1.1 Pipeline
+
+```
+source file (each file is compiled independently)
+  └─> FileScanner      commons/scanner.cpp     128B buffer, line/column, EOF sentinel
+      └─> Lexer        lexer.cpp               token stream (printed via Parser::move under -t)
+          └─> Parser   parser.cpp              LL(1) recursive descent, inline semantic actions
+              ├─> SymbolTable    symbols/*     scope-path variable / function / string tables
+              └─> IRGenerator    ir_generator.cpp
+                     │            expressions and statements → three-address code
+                     ▼
+              Function.interCodeCollection   (one linear instruction sequence per function)
+                     │
+                     ▼  optimize(), once per function
+              DataFlowGraph   dataflow/*      block formation, edges, reachability
+                     └─> ConstPropagation     optimization/*  lattice iteration + two rewrite passes
+                              └─> Function.optCode
+                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼ default                         ▼ -S / -o
+              show_all_code() prints it        AArch64CodeGenerator  codegen/*
+                                               (Mach-O / ELF assembly)
+                                                   │            └ -o without -S: Linker runs cc + codesign
+```
+
+SymbolTable and IRGenerator hold pointers to each other: registering a variable is what emits OP_DECLARE (see §3.4).
+
+Compiler::compile() (compiler.cpp:17-31) branches on the output mode: by default parse → print raw IR → optimize() → print optimised IR; with -S or -o it returns straight after parsing, no IR is printed, and the assembly comes from a separate entry point Compiler::emit_assembly() (compiler.cpp:33-37), which runs optimize() (Function::do_optimize() is guarded by is_opt, so a repeated call is a no-op).
+
+---
+
+## 2. Module map
+
+| Path | Responsibility | Key types |
+|---|---|---|
+| src/shaolang.cpp | CLI: argument parsing, per-file pipeline construction, diagnostic totals | main |
+| src/compiler.{h,cpp} | Wires Lexer/Parser/SymbolTable/IRGenerator and drives them | Compiler |
+| src/commons/common.h | Global enums and their message tables: tokens, syntax errors, semantic errors, IR opcodes; forward declarations | LexicalType syntaxError semanticError InterCodeOperator |
+| src/commons/scanner.{h,cpp} | Buffered character stream + line/column tracking | FileScanner |
+| src/commons/token.{h,cpp} | Token objects carrying a value (ID / int / char / string) | Token IDToken IntegerToken CharToken StringToken |
+| src/lexer.{h,cpp} | Token recognition, comment skipping, literal values, lexical error recovery | Lexer |
+| src/parser.{h,cpp} | Recursive-descent parsing + error recovery + semantic actions | Parser |
+| src/symbols/variable.{h,cpp} | Variable/constant/temporary model: type, initial value, scope path, lvalue-ness, analysis index | Variable |
+| src/symbols/function.{h,cpp} | Function symbol: parameters, instruction collection, return point, optimised code | Function |
+| src/symbols/symbol_table.{h,cpp} | Scope-path variable table, function table, string constant table, instruction dispatch | SymbolTable |
+| src/ir/inter_code.{h,cpp} | Three-address instruction record (5 construction shapes) + printing | IntermediateInstruct |
+| src/ir/inter_code_collection.{h,cpp} | Linear instruction sequence + leader marking | InterCodeCollection |
+| src/ir_generator.{h,cpp} | Expression/statement lowering, jump patch stacks | IRGenerator |
+| src/dataflow/block.{h,cpp} | Basic block: instructions, prev/next edges, in/out value vectors | Block |
+| src/dataflow/data_flow_graph.{h,cpp} | Block creation, edge linking, reachability, dead-block unlinking, opt code export | DataFlowGraph |
+| src/optimization/const_opt.{h,cpp} | Constant lattice iteration + algebraic + jump simplification | ConstPropagation |
+| src/codegen/target.{h,cpp} | Compile target (architecture × platform), --target= parsing, support check | CompileTarget Architecture SystemPlatform |
+| src/codegen/aarch64_codegen.{h,cpp} | Optimised IR → ARM64 assembly: frame layout, calling convention, static data, two target formats | AArch64CodeGenerator |
+| src/codegen/linker.{h,cpp} | Drives the host tool chain to assemble and link the output, plus an ad-hoc signature on macOS | Linker |
+| src/commons/type_util.{h,cpp} | Type canonicalisation, compatibility, offset step, type width | TypeUtil |
+| src/commons/error.{h,cpp} | Static diagnostic output and counters | Error |
+| src/commons/argument.{h,cpp} | Static switches (-t / -b / -S / build an executable) | CompilerArguments |
+
+Dependencies point one way only: commons ← symbols/ir ← ir_generator ← parser ← compiler ← shaolang.cpp; dataflow/optimization are used exclusively by Function::do_optimize(), and codegen consumes only the finished sequence (Function::get_emitted_code(), function.cpp:111-116) — apart from writing frame offsets back onto the variables, which is covered in §5.10. Circular includes are avoided by concentrating the forward declarations in common.h.
+
+---
+
+## 3. Stage design
+
+### 3.1 FileScanner (commons/scanner.cpp)
+
+- A fread buffer of BUFFER_SIZE = 128; move() returns one character, and EOF_CHAR = (char)-1 at end of file (scanner.h:12-15). (char)-1 is chosen over EOF's int form so it cannot collide with a UTF-8 byte.
+- Line/column advance happens in the #ifdef LF / #elif CRLF branch on newline (scanner.cpp:64-74); CMakeLists.txt defines LF/CRLF per platform. If neither is defined, line numbers stay at 1.
+- A failed fopen prints a message but **does not abort**; move() then returns EOF forever (scanner.cpp:47-51), so a bad path behaves like an empty file.
+
+### 3.2 Lexer (lexer.cpp)
+
+- The main loop next_token(): skip blanks → dispatch on the first character (identifier / " / ' / digit / operator); at EOF it produces and caches an END token.
+- Keywords live in a static table inside an anonymous namespace and are matched by linear search (lexer.cpp:20-43); a miss yields ID.
+- Two-character operators are handled with one token of lookahead in read_operator()'s switch (lexer.cpp:242-296); when / is followed by / or * the comment branch runs and **returns NULL**.
+- Recovery policy: **a lexical error produces no token**. read_number/read_char/read_string/invalid_operator report and return NULL; the main loop continues and rescans (lexer.cpp:78-81). So 1abc, 1.5 or an unterminated string pollute exactly one token position.
+- Ownership: current_token is deleted right before replacement, so a Token* is valid only until the next call — the Parser must consume it before its next move().
+
+### 3.3 Parser (parser.cpp)
+
+LL(1) recursive descent: one member function per non-terminal, and the comment above each function records the production it implements (e.g. parser.cpp:77-79).
+
+- **FIRST sets are written as macros** (parser.cpp:14-22): ALL_TYPES, ALL_EXPR_KW, ALL_STATEMENT_KW, … — hand-maintained approximations of FIRST. They are the only dispatch mechanism, which is also where grammar gaps come from: a statement keyword that is absent from ALL_STATEMENT_KW can never reach statement() (K_INPUT/K_OUTPUT were added to it later, at parser.cpp:22).
+- **Matching**: check_and_move(type) (parser.cpp:69-75) consumes on match.
+- **Recovery**: recovery(in_follow_set, lost, error[, delete_all]) (parser.cpp:45-67). If the current token is in the follow set, treat it as *missing*: report xxx_LOST and consume nothing (equivalent to taking an empty production). Otherwise report xxx_ERROR and, by default, drop one token; the delete_all variant skips ahead to the next ), }, ; or END. This is simplified panic mode — no production-level re-entry.
+- **Inline semantic actions**: value_definition returns a Variable* directly; every function in the expression chain returns the "result store" (Variable*); jump targets travel out through IntermediateInstruct*& parameters (while_statement, if_statement).
+- Because there is no AST, **use-before-declare is structurally impossible**: the callee must already be in the function table at the call site.
+
+### 3.4 SymbolTable (symbols/symbol_table.cpp)
+
+| Structure | Purpose |
+|---|---|
+| unordered_map&lt;string, vector&lt;Variable*>*> variableTable | Same-named variables coexist per scope level; literal constants are also stored here and skip the duplicate check (symbol_table.cpp:78-80) |
+| vector&lt;int> scope_vector | Current scope path. enter_new_scope() increments current_scope_id and pushes; exit_current_scope() pops, never popping the file-level scope (symbol_table.cpp:34-42) |
+| unordered_map&lt;string, Function*> functionTable | **One slot per name**, so same-name-different-parameters is not overloading; the has_declare flag distinguishes prototype / definition / duplicate |
+| vector&lt;Variable*> globalVariables | Depth-1 variables, used by constant propagation for initial values and the kill set |
+| unordered_map&lt;string, Variable*> constStringTable | String constant pool — written, never read today |
+| variable_define_order_list / function_define_order_list | The latter is the single source of "in definition order" for three consumers: IR printing, per-function optimisation, and back-end code emission (get_defined_functions, symbol_table.cpp:197-208, which filters out prototype-only entries); the former is still write-only |
+
+Lookup get_variable() (symbol_table.cpp:106-127) picks the candidate whose scope path is the **longest prefix** of the current path — nearest-visible wins. A miss reports 使用未定义变量 and returns NULL; downstream operations tolerate NULL (they return silently).
+
+**Key coupling**: the tail of add_variable() calls irGenerator->generate_variable_init(variable) (symbol_table.cpp:100-102). Registering a symbol *is* what emits OP_DECLARE, and IRGenerator holds the SymbolTable in return. The two are injected into each other in compiler.cpp:12-14.
+
+Instruction dispatch add_inter_instruct() (symbol_table.cpp:209-215) appends only when current_function is set, otherwise it deletes the instruction. That is the mechanism behind "expression instructions at global scope are silently dropped".
+
+### 3.5 Variable (symbols/variable.cpp)
+
+One class plays five roles, distinguished by flags:
+
+| Constructor | Use | Key flags |
+|---|---|---|
+| Variable(name, scope, type, init) | user declaration | is_left_value = true |
+| Variable(Token*) | literal, name fixed to &lt;&lt;int&gt;&gt; / &lt;&lt;char&gt;&gt; / &lt;&lt;string&gt;&gt; | is_constraint = true, is_left_value = false |
+| Variable(int) | integer constant used by the optimiser | same as above |
+| Variable(scope, type, is_ptr) / Variable(scope, var) | temporary for an operation result, named .L&lt;tempId++> | is_temp_store = true |
+| Variable() | the shared void value | TK_VOID + is_pointer |
+
+Fields fall in three groups: type/value (type, integer_initial_value, char_initial_value, str_initial_value); reference-ness (is_pointer, is_array, array_length, ptr — **unreachable from the grammar**, see grammar doc §2.4); and storage placement (frame_offsize, now both written and read by the back end's allocate_frame, while Function::frame_max_depth, current_esp_ptr and scope_esp remain placeholders).
+
+opt_index is the lattice slot the data flow analysis assigns; check_init() / is_init() decide whether a literal initialiser is folded into the declaration or needs a separate assignment.
+
+The static counter Variable::tempId (variable.cpp:17) drives both temporary names (variable.cpp:57) and instruction labels (inter_code.cpp:113), so the .L&lt;n> namespace is **shared and globally monotonic** — names never collide across functions, but the number tells you nothing about the kind of entity.
+
+### 3.6 Intermediate representation (ir/inter_code.{h,cpp})
+
+Each instruction is a fixed six-slot three-address record plus a label:
+
+```
+label | op | resultVar | leftArg | rightArg | jumpTarget | function | block
+```
+
+The five constructors map to the five usage shapes: (op, result, left, right) arithmetic/comparison; (op, fun, result) calls (result == NULL means OP_PROC); (op, var) declaration/argument push; (op, target, left, right) jumps; () an empty instruction, i.e. a **label pseudo-op** (inter_code.cpp:41-44).
+
+Jump targets are **pointers, not indices**, so patching is free: lowering allocates a placeholder IntermediateInstruct(), and when the construct is complete the placeholder itself is appended to the sequence (ir_generator.cpp:356-401).
+
+Opcodes (enum common.h:147-161, the strictly order-matched hint table common.h:163-176, printing in inter_code.cpp:162-205):
+
+| Opcode | Printed form | Emitted by |
+|---|---|---|
+| OP_EMPTY_INST | .L&lt;n> (label line only) | while/if placeholders, function return point |
+| OP_DECLARE | dec v | generate_variable_init |
+| OP_ENTER / OP_EXIT | entry / exit | generate_function_head/tail |
+| OP_ASSIGN | r = l | generate_assign |
+| OP_ADD/SUB/MUL/DIV/MOD | r = l op rr | binary ops; inc/dec reuse it (r = r + step) |
+| OP_MINUS / OP_NOT | r = -l / r = !l | unary ops |
+| OP_GT/GE/LT/LE/EQ/NEQ | r = l cmp rr | comparisons (result is always an int temporary) |
+| OP_AND / OP_OR | r = l && rr | logical ops (**no short circuit**) |
+| OP_LEA / OP_PTR_SET / OP_PTR_GET | no dedicated format, falls into default | only on reference-operand paths, unreachable from source |
+| OP_JMP | goto L | while back edge, if/else joins, break/continue |
+| OP_JMP_FALSE | if c no true jmp to L | while / if conditions |
+| OP_JMP_TRUE / OP_JMP_NEQ | — | never emitted by the front end; only handled by is_jmcond() and jump simplification |
+| OP_ARG | arg v | argument push |
+| OP_PROC | f( | void call |
+| OP_CALL | r = f() | call with a result |
+| OP_READ | read v | input statement (ir_generator.cpp:440-453) |
+| OP_PRINT | print v | output statement (ir_generator.cpp:455-461) |
+| OP_RETURN / OP_RETURN_WITH_VAL | goto L / return v then goto L | return statement, targeting the function return point |
+
+Two cosmetic defects worth fixing: OP_MOD prints %% (inter_code.cpp:177), and the default branch dereferences resultVar unconditionally (inter_code.cpp:202) — any unexpected opcode landing there is a null dereference.
+
+### 3.7 Lowering rules (ir_generator.cpp)
+
+**Expressions**: every operation allocates a fresh temporary and one three-address instruction. No reuse, no register-allocation hints.
+
+```
+a + b            →  dec .Lt ; .Lt = a + b        (generate_two_value_op → generate_add)
+a = b            →  a = b                        (returns the left variable)
+a = b = c        →  b = c ; a = b                (assign_extend re-extends on the result)
+++a              →  a = a + step                 (generate_inc_first, yields a)
+a++              →  dec .Lt ; .Lt = a ; a = a + step   (generate_inc_last, yields .Lt)
+!x / -x          →  dec .Lt ; .Lt = !x / -x
+f(1, 2)          →  arg 2 ; arg 1 ; dec .Lt ; .Lt = f()   (arguments pushed right to left, ir_generator.cpp:70-72)
+g()  (void)      →  arg ... ; g(                 (OP_PROC, yields the shared voidVariable)
+input a          →  read a                       (generate_read; the target is the declared variable itself)
+output e         →  <evaluation chain of e> ; print .Lt    (generate_print receives the result of all_expr)
+```
+
+The increment step comes from TypeUtil::get_offset_step(): 8 for an address value (pointer, array name) and 1 otherwise (type_util.cpp:38-41). Since references are unreachable, it is always 1 in practice.
+
+**Control flow**: the two parallel stacks head_link / tail_link are pushed/popped only by while; break jumps to tail_link.back() and continue to head_link.back() (ir_generator.cpp:403-419). A break inside an if therefore resolves to the enclosing while for free, and an empty stack is exactly the "not inside a while" diagnostic.
+
+```
+while (c) B      →  L_head: dec .t; .t = c; if .t no true jmp L_exit
+                        B
+                    goto L_head
+                    L_exit:
+if (c) A else B  →  dec .t; .t = c; if .t no true jmp L_else
+                        A ; goto L_exit ; L_else: B ; L_exit:
+```
+
+Note that if's L_else placeholder is appended *after* the conditional jump, which is why the label line appears after the jump that targets it (.L6 below y = 5 in the sample output).
+
+**Functions**: OP_ENTER → body → return point (empty label instruction) → OP_EXIT. return only jumps to the return point, so a single unified exit always exists and generate_function_tail materialises it (ir_generator.cpp:477-487).
+
+### 3.8 Control flow graph (dataflow/*)
+
+Block construction is two steps:
+
+1. InterCodeCollection::mark_all_first_inst() finds leaders (inter_code_collection.cpp:15-39): the first, second and last instructions of the sequence, the successor of every (conditional) jump, and every jump **target**. The "first two instructions are always leaders" rule is an implementation extra, which is why entry is always alone in block 0.
+2. create_new_blocks() slices the sequence in order and link_blocks() adds edges (data_flow_graph.cpp:41-68): if a block's last instruction is not OP_JMP (note is_jmp() only tests the unconditional form, so conditional jumps still get a fallthrough edge) add the sequential edge; if it is a jump or conditional jump, additionally add the edge to the target's block.
+
+OP_RETURN* targets are the function return point rather than control-flow jumps, so a sequential edge into the exit block always survives and the exit block is always reachable.
+
+Edges are maintained explicitly in both directions: link() de-duplicates then adds prev/next; un_link() removes both directions and recursively prunes blocks that just died via delete_all_next_link() (guarded by is_reachable(), data_flow_graph.cpp:97-114). write_opt_code() walks blocks in index order and exports the instructions of reachable ones, producing the optimised linear code (data_flow_graph.cpp:169-180).
+
+The -b dump (Block::to_string):
+
+```
+---------------------------------
+Block:1
+- Prev:
+0
+- Next:
+2 , 3
+- Code:
+dec s
+dec .L1
+.L1 = n > 1
+if .L1 no true jmp to .L2
+```
+
+### 3.9 Constant propagation (optimization/const_opt.cpp)
+
+A textbook **forward data flow analysis over a finite-height lattice**, run once per function right after the graph is built (function.cpp:95-109).
+
+- Lattice: NAC = LONG_MIN (not a constant) < a constant c / UNDEF = LONG_MAX (unknown). The meet is ux() (const_opt.cpp:139-151): any NAC → NAC; UNDEF is the identity; two different constants → NAC.
+- Variable numbering (opt_index) covers three groups: globals (initial value taken from the literal folded by check_init(), UNDEF when uninitialised, NAC for non-basic types), parameters (always NAC), and locals/temporaries declared by OP_DECLARE in this function. Before starting, all three groups are reset to opt_index = -1 so a previous function's numbering cannot leak (const_opt.cpp:22-33).
+- Boundary conditions: block 0's out vector is the initial value vector; all other blocks start with in = out = UNDEF… (const_opt.cpp:90-96).
+- Iteration: round-robin over blocks 1 … n-1; each pass does union_blocks() (bitwise meet over predecessors) then transform_block() (apply fx to each instruction in the block), repeating while any out changes (const_opt.cpp:97-106). There is no worklist, so the cost is O(passes × blocks).
+- The transfer function fx (const_opt.cpp:176-304): expression instructions are evaluated from operand lattice values (division/modulo by zero → NAC); OP_READ flushes its target to NAC (external input is unknown to the analysis); OP_PRINT changes no value; OP_PTR_SET and OP_ARG of a non-basic operand flush the **entire** vector to NAC; OP_LEA/OP_PTR_GET set only the result to NAC; OP_PROC/OP_CALL kill all globals plus the call result.
+- Simplification 1 — algebra_simplify() (const_opt.cpp:306-456):
+  - result known constant → the whole instruction becomes storePoint = constant;
+  - identity/zero rules: x+0→x, 0-x→-x, x-0→x, x*0→0, x*1→x, 0/x→0, x/1→x, x%0→0, x%1→0, 0&&x→0, nonzero&&x→x!=0, nonzero||x→1, 0||x→x!=0;
+  - otherwise one known operand is replaced by a constant object (partial folding);
+  - OP_ARG / OP_RETURN_WITH_VAL operands are replaced by constants when known.
+  New constants are registered through symbolTable->add_variable() — being literals, generate_variable_init returns immediately and emits no instruction (symbol_table.cpp:56-61, ir_generator.cpp:465-467).
+- Simplification 2 — condition_jump_simplify() (const_opt.cpp:472-531):
+  - constant condition → decide whether the jump is taken;
+  - taken and target is the sequential successor → delete the instruction (natural fallthrough); target elsewhere → degrade to OP_JMP;
+  - not taken → delete the instruction, add the sequential edge, and un_link the jump edge if the target is not the successor (the code comments call out this add-then-remove ordering dependency explicitly).
+
+Measured (-[int] main(){ int x = 1 + 2 * 3; int y = x * 1 + 0; if (y > 10) y = 5; else y = 6; return y; }):
+
+```
+before                                 after
+dec .L1                                dec .L1
+.L1 = 2 * 3                            .L1 = 6
+dec .L2                                dec .L2
+.L2 = 1 + .L1                          .L2 = 7
+dec x                                  dec x
+x = .L2                                x = 7
+.L3 = x * 1                     →      .L3 = 7
+.L4 = .L3 + 0                          .L4 = 7
+...                                    ...
+.L5 = y > 10                           .L5 = 0
+if .L5 no true jmp to .L6              goto .L6
+```
+
+### 3.10 Back end: ARM64 assembly and host linking (codegen/*)
+
+-S turns the optimised three-address code into aarch64 assembly. The target comes from --target= (codegen/target.cpp: host_target picks the machine from the MAC_OSX / LINUX / WINDOWS compile macros, parse_target accepts macos-arm64 / darwin-arm64 / apple-arm64 / linux-arm64 / aarch64-linux, and target_supported explicitly rejects windows-arm64 — Windows ARM64 needs caller-reserved shadow space and an assembly shape unlike both Mach-O and ELF). With -o but no -S, the compiler goes one step further and drives the host tool chain into a runnable binary (end of this section).
+
+Register layout is **hard-coded** (aarch64_codegen.cpp:11-24): x0 holds the left operand, x1 the right, x2 the result, x3 the quotient of a modulo, and x0..x7 double as the argument registers (VALUE_REGISTERS); x10 is used only for address computation and x11 only for shuffling stack arguments, deliberately out of x0..x7. There is no register allocation pass: every variable with storage stays in its frame slot or static data, and the registers are nothing but a per-instruction conveyor belt.
+
+Top level (aarch64_codegen.cpp:51-62): emit .text (plus .subsections_via_symbols on Mach-O, telling the assembler each symbol may start its own data section) → one function at a time **in definition order** → static data at the end. The function list comes from SymbolTable::get_defined_functions() (symbol_table.cpp:197-207), which drops prototype-only declarations, so a declaration never produces code — the optimiser applies no such filter, see §5.8.
+
+Per function (generate_function, aarch64_codegen.cpp:64-88): get_emitted_code() (optimised sequence when available, function.cpp:111-116) → allocate_frame → symbol header (Mach-O prefixes an underscore; ELF additionally needs .type/@function and .size) → prologue → parameters spilled from registers → instruction-by-instruction translation → if the sequence never reached OP_EXIT, an epilogue is appended so a function cannot fall through into the next one after its exit block was optimised away.
+
+The storage model treats **every value as a 64-bit signed integer**, and every variable that has storage gets one 8-byte slot. storage_of() (371-388) classifies each operand:
+
+| StorageKind | Condition | Reading it |
+|---|---|---|
+| STORAGE_IMMEDIATE | literal | mov dest, #n; outside one mov encoding it is built with movz plus movk instructions (load_immediate, 398-413) |
+| STORAGE_STRING | C_STRING literal | the value *is* the address of its static symbol (adrp+add) |
+| STORAGE_FRAME | frame_offset ≠ 0, i.e. locals and temporaries | ldur dest, [x29, #negative offset] |
+| STORAGE_STATIC | scope path of length 1, i.e. file-level global | take the symbol address, then ldr |
+| STORAGE_NOWHERE | void / null / anything the above excluded | mov dest, xzr |
+
+That last row is a **silent fallback**: a variable that is neither slotted in the frame nor a global is read as 0 with no diagnostic — the measured defect in §5.9 lands exactly here.
+
+allocate_frame (90-112) hands out negative offsets to parameters first, in declaration order (their DECLARE instructions precede the body, so they must be counted separately), then scans OP_DECLARE for locals and temporaries; void, literals, strings, file-level globals and **variables that already carry an offset** are skipped. frame_size = align_up(8 × slots, 16). When frame_size exceeds 4095 the prologue switches to mov x10 / sub sp, sp, x10, since the add/sub immediate is a 12-bit unsigned field (114-126). Slot addressing does the same: offsets inside [-256,255] use [x29, #off] directly with ldur/str, anything deeper first materialises the slot address in x10 (slot_ref / slot_address, 390-396 and 415-425), and that large number itself goes through load_immediate.
+
+Calling convention (emit_arguments / emit_call, 128-169): arguments in x0..x7; from the 9th onward the caller places them on the stack — sub sp by a 16-byte-aligned block, move each through x11, add sp back after the bl. The callee stores x0..x7 into its own frame slots, and spills the stack-passed parameters out of the fixed positions above the saved fp into its own slots. The result is always in x0: OP_CALL stores it into its result variable (277-280), a void call goes through OP_PROC (281-283), and a valued return is compiled as "load the expression into x0, then b to the exit label" (284-287), where OP_EXIT performs the single unwinding sequence.
+
+The argument sequence and the instruction stream are **interlocked**: the front end lowers a valued call to arg a; arg b; dec .Lt; .Lt = f(), so the return temporary's OP_DECLARE sits exactly between the arguments and the call. emit_body therefore lets OP_DECLARE through without flushing pending_args, and only clears the leftover arguments on any other instruction (274-276, 325-329). The same rule is why OP_DECLARE has to do real work (191-197): for int a = 3; the front end only registers the symbol and folds the literal into the Variable, emitting no OP_ASSIGN at all, so the back end must produce the mov + str that initialises the slot.
+
+Labels (local_label, 541-547): on Mach-O a label starting with a dot is treated as an external symbol, and conditional branches refuse it as a target, so the IR's .L prefix is stripped to L on output (ELF keeps it as is).
+
+I/O lowering (306-319, 360-369, 580-595): the format string follows the operand's literal type — %c for char, %s for strings, %lld otherwise. OP_READ takes the variable's address and calls scanf (for %c it first stores xzr into the slot, because scanf writes only the low byte and the upper bits would keep stack garbage). OP_PRINT goes through emit_vararg_call: Apple ARM64 requires the caller to open a 64-byte window at sp for variadic arguments, so the value is left in x1 *and* stored at [sp] — Linux reads only x1, and writing both positions is correct on either target. Format strings themselves go through the same deduplicating string_symbol table.
+
+Static data (emit_static_data, 489-539): deduplicated strings go to __TEXT,__cstring / .rodata, globals to __DATA,__data / .data (uninitialised → .zero 8, initialised → .quad value). On Mach-O both get .private_extern (ELF uses .hidden plus .type/@object), because adrp needs a real symbol rather than a file-local temporary label. String bytes pass through escape() (597-615): quotes and backslashes are escaped, non-printable bytes become fixed three-digit octal so they cannot merge with a following digit.
+
+Assembling and linking are a separate step (codegen/linker.cpp). linkable_on_host() (19-29) compares the host platform with the target and refuses to link across systems; assemble_and_link() (31-48) writes the intermediate assembly to a temporary .s named after the process id and the file index inside TMPDIR (shaolang.cpp:21-30), drives the system tool chain with cc -o, then — on macOS only — adds an ad-hoc codesign --force --sign - (the Apple Silicon kernel refuses to run unsigned code), and deletes the temporary .s on success or keeps it and echoes the command on failure. Every path goes through shell_quote() single-quote escaping.
+
+Measured coverage (host arm64, cc + ad-hoc signature): globals and char globals, local literal initialisers, calls with up to 8 arguments and beyond them (a 10-argument sum returns 55), recursion (fib(10) = 55), void calls, while / if / break / continue, input for int and char, string output, 300 and 600 local variables (the latter already exercises the x10 over-the-window path), add/sub/mul/div/mod and negatives, and constants such as 123456789 that need a movz + movk sequence. The same program under --target=linux-arm64 differs in six places only: no .subsections_via_symbols, no underscore prefix, extra .type/@function and .size, section names .rodata / .data (plus .hidden and .type/@object for globals), page references written as adrp + add :lo12: instead of adrp + add @PAGE/@PAGEOFF, and local labels keeping the IR's original .L prefix. The cross format can be emitted locally, but verifying it end to end needs a real cross assembler and linker.
+
+### 3.11 Diagnostics (commons/error.{h,cpp})
+
+- Error is entirely static: error_amount / warning_amount accumulate across files (the total is printed in shaolang.cpp:145-148), and Error::scanner is injected by the Lexer constructor so messages can carry line/column.
+- Message text never lives at the throw site. Four tables — typeName / syntaxErrorHints / semanticErrorHints / interOpHints — are kept strictly index-aligned with their enums, each guarded by a static_assert so adding an enum entry cannot silently shift the strings (common.h:49-50, 88-89, 143-144, 178-179). Throw sites just write SE_ERROR(semanticErrorHints[XXX]).
+- All messages are Chinese-only; the grammar doc's §6 table carries English glosses for the ones a reader is most likely to hit.
+- There are only Error and Warning, no fatal: the pipeline continues after diagnostics, a file with errors still finishes parsing and optimisation, and the exit code stays 0 (only an invalid command line returns 2 — see §4). ErrorNames misspells [Waring] (error.cpp:15).
+- Position semantics need care: what is printed is where the scanner **currently is**, not where the offending construct started, which is why diagnostics often point past the real error (root cause of grammar doc §7.8).
+
+---
+
+## 4. CLI and build
+
+```
+shaolang <source file> [options]
+  -h                usage              (→ CompilerArguments::showHelp)
+  -t                print token stream (printed inside Parser::move())
+  -b                print basic blocks (printed inside Function::do_optimize())
+  -S                emit target assembly only (→ CompilerArguments::emitAssembly, Compiler::emit_assembly)
+  -o <file>         with -S: the assembly file; without -S: assemble and link an executable
+  --target=<name>   macos-arm64 / darwin-arm64 / apple-arm64 / linux-arm64 / aarch64-linux, host by default
+```
+
+What -S and -o combine into (shaolang.cpp:88-89 defines generateExecutable as "-o given and -S absent"): -S with -o writes the assembly to that file, -S alone sends it to stdout, -o alone writes a temporary .s, links it, prints 已生成可执行文件 [executable written to] followed by the output path, and deletes the temporary file — on failure the .s is kept and the command is echoed. Asking for -o on a target that differs from the host is refused with a suggestion to use -S instead (Linker::linkable_on_host, linker.cpp:19-29). Neither switch means the default IR print.
+
+Every command-line rejection returns 2: an unrecognised option, -o without a filename, an unknown --target= value, an unsupported target (windows-arm64 comes with a reason), -o combined with several source files, an output file that cannot be opened, or a temporary assembly file that cannot be written (shaolang.cpp:44-152). **Errors in the source itself do not change the exit code** — it stays 0; such a file simply gets no target code and prints 源文件存在错误，没有生成目标代码 [the source file has errors, no target code was generated].
+
+The error gate is **per file**: the driver notes Error::get_error_amount() before each file and compares afterwards (shaolang.cpp:97-104), so one file's errors do not suppress another file's output.
+
+- build.sh runs mkdir build && cmake ../ && make; CMakeLists.txt declares cmake_minimum_required(VERSION 2.8) while the README asks for 3.6+, defines -DLF / -DCRLF per platform, and already lists the four codegen files.
+- Without cmake, a direct compile works — this is what was used to verify everything in these docs:
+  
+  c++ -std=c++11 -Isrc -DMAC_OSX -DLF $(find src -name '*.cpp') -o shaolang
+  
+  The emitted assembly can be linked by hand (cc -arch arm64 x.s -o x) or by the compiler itself (shaolang x.sl -o x).
+- CI: .github/workflows/ci.yml (Linux, macOS) and appveyor.yml (Windows MSVC) build only.
+- The repository has no automated tests. Grammar, semantics and design claims were checked by feeding .sl samples to that binary and reading the IR, the diagnostics, and the actual output of the assembled and linked program.
+
+---
+
+## 5. Trade-offs a maintainer should know
+
+1. **Cost of having no AST**: short code path (parse == emit), but anything requiring structural look-back is limited — forward references, cross-statement type propagation, and any new pass all mean editing parser.cpp itself.
+2. **Symbol table and IR generator trigger each other**: add_variable → generate_variable_init → add_inter_instruct. Adding a "register only, emit nothing" symbol (as the optimiser does with constants) relies on the is_literal_value() short circuit — an implicit contract that is easy to break.
+3. **Raw pointers and manual ownership**: tokens are freed on replacement; Variable/Function/IntermediateInstruct are owned by the symbol table and instruction lists and essentially never freed (acceptable for a short-lived process). The five static constant objects (SymbolTable::zeroVariable, …) are shared by all functions, which is exactly why the opt_index reset logic exists.
+4. **Optimisation is per-function and single-run**: no interprocedural propagation, no copy propagation/CSE/DCE, and no re-analysis after simplification (simplification runs once, after analysis).
+5. **Jump simplification does not delete newly dead code**: when the condition is provably *taken*, only the opcode is rewritten to OP_JMP and the sequential edge stays (const_opt.cpp:512-520), so the bypassed block is still exported by write_opt_code() — the measured output prints y = 5 after goto .L6. Only the "never taken" branch calls un_link and drops the dead block.
+6. **Labels and temporaries share one counter**, and display() short-circuits label-only instructions (inter_code.cpp:164-167) — a printed .L3 may be either; only whether it occupies its own line tells you which.
+7. **Little reentrancy**: Error, CompilerArguments, Variable::tempId and Block::global_block_id are static, so positions and counters bleed across files in a multi-file run.
+8. **A prototype without a definition crashes the compiler**: SymbolTable::optimize() (symbol_table.cpp:232-237) and show_all_code() (217-222) both walk the whole function_define_order_list without the is_declare filter get_defined_functions() applies, so the prototype also enters do_optimize — its instruction list is empty, the DataFlowGraph has no blocks at all, and const_opt.cpp:92 indexes all_blocks[0] out of bounds. Measured: a file containing only -[int] helper(int x); — with no call at all — exits with code 139 (SIGSEGV), on both the IR and the -S path.
+9. **Adding the definition after a prototype silently loses the parameters**: when define_function() (symbol_table.cpp:144-162) finds an existing prototype under the same name, it keeps **the prototype's Function object** (and with it the prototype's parameter Variable list) — but parameter() (parser.cpp:217-224) has already registered the definition's parameters as **new** symbols under a different scope id before that. So allocate_frame lays out the prototype's parameters while the body reads the definition's, whose frame_offset stays 0, which storage_of classifies as STORAGE_NOWHERE → the parameter always reads as 0. Measured: -[int] helper(int x); followed by -[int] helper(int x) { return x; } makes output helper(3); print 0; delete the prototype line and it prints 3. Grammar doc §4.3 recommends "add a prototype" as the forward-reference workaround — that is correct through the IR stage and only breaks once -S / -o is involved.
+10. **The back end is not a pure consumer**: allocate_frame writes the layout back onto the symbols via set_frame_offset(), so generating twice from the same symbol table reuses the old offsets — which is also why the "already has an offset, skip it" rule exists.
+
+---
+
+## 6. Improvement roadmap (best value first)
+
+**Cheap fixes**
+- Expression statements throw their result away yet still leave a temporary behind (3 + 4; survives simplification as .L1 = 7): the rewrite pass could drop assignments whose result temporary is never read. Calling a void function as a statement already works (arg … ; f(, i.e. OP_PROC).
+- Fix %% for OP_MOD, the null dereference in display()'s default branch, and the [Waring] typo.
+- Report the start position of the failing construct (let the Lexer record token start offsets, or pass positions explicitly).
+- The two prototype defects: give SymbolTable::optimize() and show_all_code() the same is_declare filter get_defined_functions() uses, so an empty block sequence never reaches the analysis (§5.8); and when define_function() reuses a prototype's Function object, replace its parameter list with the definition's freshly registered symbols — or simply reject the double registration (§5.9). These are the only known faults in the -S / -o path.
+
+**Structural upgrades**
+- Introduce an AST (or at least split declaration from use into two passes) to unlock forward references, real int/char type checking, and array/pointer syntax — the data structures and IR instructions for those already exist.
+- Move semantic checks out of IRGenerator into a dedicated pass so the symbol table stops emitting code.
+- Replace round-robin iteration with a worklist, add DCE/copy propagation, and re-run the analysis after simplification.
+
+**Back end**
+- Already there: single ARM64 architecture, x0..x7 argument passing plus stack arguments from the 9th, 8-byte-slot frame layout (with the x10 fallback once an offset leaves the x29 immediate window), Mach-O and ELF formats, input/output through scanf/printf, and direct host linking with an ad-hoc signature. Measured working: recursion, multi-argument calls, char input, string output, 600 local variables. The remaining inert fields are Function::frame_max_depth and current_esp_ptr (scope_esp only ever push/pops a constant 0).
+- Add an end-to-end suite that compiles, assembles, links, runs and compares stdout, freezing the scenarios verified by hand; current CI builds the compiler only and never checks what it emits.
+- Worth doing structurally: register allocation (every three-address instruction currently round-trips through memory), real widths for char and strings (everything is handled as a 64-bit integer, and the 1-byte char semantics exist only in the format string), jump tables, shorter prologues/epilogues, and Windows ARM64 shadow space.
