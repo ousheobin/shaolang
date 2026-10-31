@@ -7,13 +7,7 @@
 
 #include <functional>
 #include <stack>
-
-#if defined(WIN32) || defined(WIN64)
 #include <unordered_map>
-using namespace stdext;
-#else
-#include <unordered_map>
-#endif
 
 #include "commons/error.h"
 #include "commons/common.h"
