@@ -9,8 +9,10 @@
 #include <cstring>
 #include <cstdio>
 #if defined(WINDOWS) || defined(_WIN32)
+#include <windows.h>
 #include <process.h>
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 #include "compiler.h"
@@ -22,17 +24,63 @@
 
 using namespace std;
 
+// 临时目录必须逐个确认能用：环境变量可能给出本机可执行文件认不出的路径，
+// 比如 MSYS 一类的环境会把 TMP 原样给成 /tmp，它只对 argv 做 POSIX 到 Win32 的转换，
+// 环境变量不归它管。文件名带进程号，别的程序的临时文件不会被覆盖；同一进程内
+// 多个源文件再按下标区分。
+#if defined(WINDOWS) || defined(_WIN32)
+static bool usable_directory(const string & dir){
+    DWORD attributes = GetFileAttributesA(dir.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+}
+#else
+static bool usable_directory(const string & dir){
+    struct stat info;
+    return stat(dir.c_str(), &info) == 0 && S_ISDIR(info.st_mode)
+        && access(dir.c_str(), R_OK | W_OK | X_OK) == 0;
+}
+#endif
+
 static string temp_assembly_path(int index){
-    const char * directory = getenv("TMPDIR");
-    string base = (directory != NULL && directory[0] != '\0') ? string(directory) : string("/tmp");
-    if(base[base.size() - 1] == '/'){
-        base.erase(base.size() - 1);
+    vector<string> candidates;
+#if defined(WINDOWS) || defined(_WIN32)
+    // GetTempPath 自己按 TMP、TEMP、Windows\Temp 的次序找，返回的一定是 Win32 路径
+    char buffer[MAX_PATH];
+    DWORD length = GetTempPathA(MAX_PATH, buffer);
+    if(length > 0 && length < MAX_PATH){
+        candidates.push_back(string(buffer, length));
+    }
+#else
+    const char * names[] = { "TMPDIR", "TMP", "TEMP" };
+    for(int i = 0 ; i < 3 ; i ++ ){
+        const char * value = getenv(names[i]);
+        if(value != NULL && value[0] != '\0'){
+            candidates.push_back(value);
+        }
+    }
+    candidates.push_back("/var/tmp");
+    candidates.push_back("/tmp");
+#endif
+    // 全都不能用就写在当前位置，链接失败时至少还有汇编可看
+    candidates.push_back(".");
+    string base;
+    for(unsigned long i = 0 ; i < candidates.size() ; i ++ ){
+        base = candidates[i];
+        if(base.size() > 1){
+            // 结尾分隔符统一剥掉，驱动器根 C:\ 这种要留着，否则拼出 C:tmp
+            while(base.size() > 1 && (base[base.size() - 1] == '/' || base[base.size() - 1] == '\\')){
+                base.erase(base.size() - 1);
+            }
+        }
+        if(usable_directory(base)){
+            break;
+        }
     }
     stringstream ss;
 #if defined(WINDOWS) || defined(_WIN32)
-    ss << base << "/shaolang-" << _getpid() << "-" << index << ".s";
+    ss << base << "\\" << "shaolang-" << _getpid() << "-" << index << ".s";
 #else
-    ss << base << "/shaolang-" << getpid() << "-" << index << ".s";
+    ss << base << "/" << "shaolang-" << getpid() << "-" << index << ".s";
 #endif
     return ss.str();
 }
@@ -166,7 +214,7 @@ int main(int argc, char * argv[]){
                 if(!Linker::linkable_on_host(target,reason)){
                     cout << reason << "，请改用 -S 生成汇编文件 "<<endl;
                 }else{
-                    // 汇编中间文件写在系统临时目录，链接成功后立即删除
+                    // 汇编中间文件写在临时目录，链接一结束就删
                     string assembly_path = temp_assembly_path(file_index);
                     ofstream file(assembly_path.c_str());
                     if(!file.is_open()){
@@ -177,13 +225,16 @@ int main(int argc, char * argv[]){
                     compiler -> emit_assembly(file,target);
                     file.close();
                     string failure;
-                    if(Linker::assemble_and_link(assembly_path,file_output,target,failure)){
+                    bool linked = Linker::assemble_and_link(assembly_path,file_output,target,failure);
+                    // 中间汇编不留在这台机器上：链接成败都删。工具链的报错已经收进 failure，
+                    // 真要看汇编用 -S，那才是留给用户的产物
+                    remove(assembly_path.c_str());
+                    if(linked){
                         if(CompilerArguments::showCompileSummary){
                             cout << "已生成可执行文件：" << file_output <<endl;
                         }
-                        remove(assembly_path.c_str());
                     }else{
-                        cout << failure << "，汇编保留在 " << assembly_path <<endl;
+                        cout << failure <<endl;
                     }
                 }
             }
