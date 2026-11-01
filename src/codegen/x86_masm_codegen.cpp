@@ -192,7 +192,8 @@ void X86MasmCodeGenerator::emit_call(Function *function) {
 }
 
 void X86MasmCodeGenerator::emit_epilogue() {
-    line("\tmov esp, ebp");
+    // ebx 是在 ebp 建立之后压栈的，落在 [ebp-4]，不能直接按 [ebp] 取
+    line("\tlea esp, [ebp-4]");
     line("\tpop ebx");
     line("\tpop ebp");
     line("\tret");
@@ -452,7 +453,7 @@ void X86MasmCodeGenerator::emit_logic(IntermediateInstruct *instruct,const char 
 
 void X86MasmCodeGenerator::emit_vararg_call(const string & format,const char * callee,bool address_value) {
     // cdecl：格式串在 [esp]，值或指针随后；16 字节窗口保证对齐
-    line("\tmov " + string(RIGHT_LOW) + ", OFFSET FLAT:" + string_symbol(format));
+    line("\tmov " + string(RIGHT_LOW) + ", OFFSET " + string_symbol(format));
     line("\tsub esp, 16");
     line("\tmov " + stack_ref(0) + ", " + string(RIGHT_LOW));
     if(address_value){
@@ -571,15 +572,19 @@ void X86MasmCodeGenerator::store_pair(Variable *variable,const char * low_reg,co
 
 void X86MasmCodeGenerator::load_symbol_address(const string & symbol,const char * dest) {
     // 32 位平内存模型下静态数据直接取绝对地址
-    line("\tmov " + string(dest) + ", OFFSET FLAT:" + symbol);
+    line("\tmov " + string(dest) + ", OFFSET " + symbol);
 }
 
 void X86MasmCodeGenerator::emit_divmod_helper() {
     // 64/64 带符号除法的逐位长除子程序。
     // 入参：被除数 edx:eax，除数 ebx:ecx（高位字在前）；
-    // 返回：商 edx:eax，余数 ebx:ecx；破坏 esi/edi，不碰 callee-saved。
+    // 返回：商 edx:eax，余数 ebx:ecx。
+    // esi/edi 是 callee-saved，子程序拿它们当累加器，所以先进后出保持原值；
+    // 三个临时槽在 push 之后分配，位置仍是 [esp] / [esp+4] / [esp+8]。
     // 除数为 0 时商取 0、余数取被除数，与 ARM64 后端 sdiv + msub 的行为一致。
     line("sl_divmod PROC");
+    line("\tpush esi");
+    line("\tpush edi");
     line("\tsub esp, 16");
     line("\txor esi, esi");
     line("\txor edi, edi");
@@ -594,6 +599,8 @@ void X86MasmCodeGenerator::emit_divmod_helper() {
     line("\tmov ecx, DWORD PTR [esp]");
     line("\tmov ebx, DWORD PTR [esp+4]");
     line("\tadd esp, 16");
+    line("\tpop edi");
+    line("\tpop esi");
     line("\tret");
     line("sl_divmod_abs:");
     line("\tmov DWORD PTR [esp], 0");
@@ -653,6 +660,8 @@ void X86MasmCodeGenerator::emit_divmod_helper() {
     line("\tmov ecx, esi");
     line("\tmov ebx, edi");
     line("\tadd esp, 16");
+    line("\tpop edi");
+    line("\tpop esi");
     line("\tret");
     line("sl_divmod ENDP");
     line("");

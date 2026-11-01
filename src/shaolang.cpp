@@ -78,7 +78,8 @@ static string temp_assembly_path(int index){
     }
     stringstream ss;
 #if defined(WINDOWS) || defined(_WIN32)
-    ss << base << "\\" << "shaolang-" << _getpid() << "-" << index << ".s";
+    // ml.exe 按扩展名判断源语言，MASM 源码必须是 .asm
+    ss << base << "\\" << "shaolang-" << _getpid() << "-" << index << ".asm";
 #else
     ss << base << "/" << "shaolang-" << getpid() << "-" << index << ".s";
 #endif

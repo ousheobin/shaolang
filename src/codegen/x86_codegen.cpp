@@ -192,7 +192,8 @@ void X86CodeGenerator::emit_call(Function *function) {
 }
 
 void X86CodeGenerator::emit_epilogue() {
-    line("\tmovl %ebp, %esp");
+    // ebx 是在 ebp 建立之后压栈的，落在 [ebp-4]，不能直接按 [ebp] 取
+    line("\tleal -4(%ebp), %esp");
     line("\tpopl %ebx");
     line("\tpopl %ebp");
     line("\tret");
@@ -564,10 +565,14 @@ void X86CodeGenerator::load_symbol_address(const string & symbol,const char * de
 void X86CodeGenerator::emit_divmod_helper() {
     // 64/64 带符号除法的逐位长除子程序。
     // 入参：被除数 edx:eax，除数 ebx:ecx（高位字在前）；
-    // 返回：商 edx:eax，余数 ebx:ecx；破坏 esi/edi，不碰 callee-saved。
+    // 返回：商 edx:eax，余数 ebx:ecx。
+    // esi/edi 是 callee-saved，子程序拿它们当累加器，所以先进后出保持原值；
+    // 三个临时槽在 push 之后分配，位置仍是 0/4/8(%esp)。
     // 除数为 0 时商取 0、余数取被除数，与 ARM64 后端 sdiv + msub 的行为一致。
     line("\t.p2align 4");
     line("sl_divmod:");
+    line("\tpushl %esi");
+    line("\tpushl %edi");
     line("\tsubl $16, %esp");
     line("\txorl %esi, %esi");
     line("\txorl %edi, %edi");
@@ -582,6 +587,8 @@ void X86CodeGenerator::emit_divmod_helper() {
     line("\tmovl (%esp), %ecx");
     line("\tmovl 4(%esp), %ebx");
     line("\taddl $16, %esp");
+    line("\tpopl %edi");
+    line("\tpopl %esi");
     line("\tret");
     line("sl_divmod_abs:");
     line("\tmovl $0, (%esp)");
@@ -641,6 +648,8 @@ void X86CodeGenerator::emit_divmod_helper() {
     line("\tmovl %esi, %ecx");
     line("\tmovl %edi, %ebx");
     line("\taddl $16, %esp");
+    line("\tpopl %edi");
+    line("\tpopl %esi");
     line("\tret");
     line("");
 }

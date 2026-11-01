@@ -9,7 +9,42 @@ set +e
 cd "$(dirname "$0")" || exit 1
 CASES=$PWD
 REPO=$(cd ../.. && pwd)
-WORK=$(mktemp -d) || exit 1
+
+# 工作目录：Windows 上每套 Unix 环境各有一份 /tmp 与 $HOME，msys2 与 Git 对同一个
+# 路径的映射并不一致，外部命令建出来的目录这个 shell 反而看不见，写文件就成了
+# No such file or directory。改问系统要临时目录，再换成 /c/... 形式：两边对盘符的映射
+# 一致，msys2 也会把它转回 Windows 路径交给编译器。
+work_base() {
+    case "$(uname -s)" in
+        *NT*) ;;
+        *) printf '%s\n' "${TMPDIR:-/tmp}"; return 0 ;;
+    esac
+    local win
+    # MSYS2 会把 /c 当成路径改写成 C:\，所以这条命令关掉参数转换
+    win=$(MSYS2_ARG_CONV_EXCL='*' cmd.exe /c echo %TEMP% 2>/dev/null | tr -d '\r')
+    case "$win" in
+        [A-Za-z]:\\*)
+            printf '/%s%s\n' \
+                "$(printf '%s' "$win" | cut -c1 | tr 'A-Z' 'a-z')" \
+                "$(printf '%s' "$win" | cut -c3- | tr '\\' '/')"
+            return 0
+            ;;
+    esac
+    # 拿不到系统临时目录时退回仓库同级，盘符路径同样两边一致
+    case "$REPO" in
+        /[a-zA-Z]/*) printf '%s/shaolang-e2e\n' "$(dirname "$REPO")" ;;
+        *) printf '%s\n' "${TMPDIR:-/tmp}" ;;
+    esac
+}
+
+WORK="$(work_base)/shaolang-e2e-$$"
+mkdir -p "$WORK" 2>/dev/null
+# 用 shell 自己的重定向验证：外部命令看到的目录未必是这个 shell 看到的那个
+if ! ( : > "$WORK/.probe" ) 2>/dev/null; then
+    echo "FAIL 无法创建工作目录：$WORK"
+    exit 1
+fi
+rm -f "$WORK/.probe"
 trap 'rm -rf "$WORK"' EXIT
 
 CXX=${CXX:-c++}

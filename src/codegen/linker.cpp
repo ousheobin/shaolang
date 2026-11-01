@@ -111,15 +111,29 @@ bool Linker::link_coff(const std::string & assembly_path,const std::string & out
     }
     // 目标文件只是链接的中间产物，和汇编一样写完就用完，不留在这台机器上
     std::string object = object_path_of(assembly_path);
-    std::string command = assembler + " /nologo /c /Fo" + shell_quote(object)
-                          + " " + shell_quote(assembly_path);
+    std::string command = assembler + " /nologo /c";
+    if(target.architecture != Architecture::X64){
+        // 32 位的 ml.exe 默认把标识符映射成大写，非本地名要靠 /Cx 保住原样，
+        // 否则和 CRT 里的 _printf 一类的名字对不上；ml64 没有 /Cu 这个选项，
+        // 大小写本来就是保留的
+        command += " /Cx";
+    }
+    command += " /Fo" + shell_quote(object) + " " + shell_quote(assembly_path);
     if(std::system(command.c_str()) != 0){
         std::remove(object.c_str());
         failure = "装配失败：" + command;
         return false;
     }
+    // VS2015 起 CRT 拆成三块：msvcrt.lib 是本机 CRT 启动代码（mainCRTStartup 在这里），
+    // ucrt.lib 是 C 库（含 printf / scanf），vcruntime.lib 是 C++ 运行库。
+    // alternatename 兜住两种命名约定：MASM 的 C 约定要么自己给外部名补下划线，
+    // 要么不补，缺哪种都让链接器改用另一种写法去同一个符号。
     command = "link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:" + shell_quote(output_path)
-              + " " + shell_quote(object) + " msvcrt.lib";
+              + " " + shell_quote(object)
+              + " msvcrt.lib ucrt.lib vcruntime.lib"
+              + " /alternatename:printf=_printf /alternatename:_printf=printf"
+              + " /alternatename:scanf=_scanf /alternatename:_scanf=scanf"
+              + " /alternatename:_main=main /alternatename:main=_main";
     bool linked = std::system(command.c_str()) == 0;
     std::remove(object.c_str());
     if(!linked){
