@@ -22,7 +22,10 @@ install:
     $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
     $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if (-not $vs) { throw "No Visual Studio C++ toolchain on this image." }
-    Import-Module (Join-Path $vs "Microsoft.VisualStudio.DevShell.dll")
+    # The module sits under Common7\Tools, not the installation root
+    $devShell = Join-Path $vs "Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+    if (-not (Test-Path $devShell)) { throw "Cannot find $devShell" }
+    Import-Module $devShell
     $arch = if ($env:PLATFORM -eq "x64") { "amd64" } else { "x86" }
     # ml.exe / ml64.exe and link.exe are only on PATH after the developer environment is loaded
     Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=$arch -no_logo" | Out-Null
