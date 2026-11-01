@@ -49,12 +49,16 @@ build_script:
 
 after_build:
 - ps: |
-    if ($env:CONFIGURATION -ne "Release") { return }
+    if ($env:CONFIGURATION -ne "Release") {
+        echo "End-to-end skipped in $env:CONFIGURATION: it runs once, in Release."
+        return
+    }
     # run.sh reuses the compiler it is handed through SHAOLANG instead of rebuilding with CXX.
     $exe = Join-Path $env:APPVEYOR_BUILD_FOLDER "build\$env:CONFIGURATION\shaolang.exe"
     if (-not (Test-Path $exe)) { throw "Cannot find $exe" }
     $folder = & C:\msys64\usr\bin\cygpath.exe -u $env:APPVEYOR_BUILD_FOLDER
     $compiler = & C:\msys64\usr\bin\cygpath.exe -u $exe
+    echo "Running the end-to-end suite with $compiler"
     & C:\msys64\usr\bin\bash.exe -c ('cd "' + $folder + '" && SHAOLANG="' + $compiler + '" bash test/e2e/run.sh')
     if ($LASTEXITCODE -ne 0) { throw "End-to-end suite failed" }
 
