@@ -2,3 +2,4 @@ build/*
 xcode/*
 cmake*
 *.xcodeproj
+.DS_Store
