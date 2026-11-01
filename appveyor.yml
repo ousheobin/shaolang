@@ -53,13 +53,18 @@ after_build:
         echo "End-to-end skipped in $env:CONFIGURATION: it runs once, in Release."
         return
     }
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     # run.sh reuses the compiler it is handed through SHAOLANG instead of rebuilding with CXX.
     $exe = Join-Path $env:APPVEYOR_BUILD_FOLDER "build\$env:CONFIGURATION\shaolang.exe"
     if (-not (Test-Path $exe)) { throw "Cannot find $exe" }
-    $folder = & C:\msys64\usr\bin\cygpath.exe -u $env:APPVEYOR_BUILD_FOLDER
-    $compiler = & C:\msys64\usr\bin\cygpath.exe -u $exe
-    echo "Running the end-to-end suite with $compiler"
-    & C:\msys64\usr\bin\bash.exe -c ('cd "' + $folder + '" && SHAOLANG="' + $compiler + '" bash test/e2e/run.sh')
+    # The path has to be the POSIX form because it is bash that execs the compiler.
+    $env:SHAOLANG = & C:\msys64\usr\bin\cygpath.exe -u $exe
+    if (-not $env:SHAOLANG) { throw "cygpath returned nothing for $exe" }
+    echo "Running the end-to-end suite with $env:SHAOLANG"
+    # Pass the script as an argument rather than through bash -c: PowerShell rebuilds an
+    # embedded quoted -c string without escaping the inner quotes, and the assignment reaches
+    # bash already broken.
+    & C:\msys64\usr\bin\bash.exe test/e2e/run.sh
     if ($LASTEXITCODE -ne 0) { throw "End-to-end suite failed" }
 
 deploy: off
