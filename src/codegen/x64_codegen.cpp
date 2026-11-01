@@ -10,10 +10,9 @@ namespace {
 // 表达式暂存寄存器：r10 左值 / r11 右值，结果都落在 r10
 const char * LEFT_REG = "r10";
 const char * RIGHT_REG = "r11";
-// Microsoft x64：前 4 个实参走 rcx/rdx/r8/r9
-const char * MICROSOFT_REGISTERS[] = { "rcx","rdx","r8","r9" };
-// System V x64：前 6 个实参走 rdi/rsi/rdx/rcx/r8/r9
-const char * SYSTEM_V_REGISTERS[] = { "rdi","rsi","rdx","rcx","r8","r9" };
+// System V x64：前 6 个实参走 rdi/rsi/rdx/rcx/r8/r9，第 7 个起放栈上
+const char * ARGUMENT_REGISTERS[] = { "rdi","rsi","rdx","rcx","r8","r9" };
+const int REGISTER_ARGUMENT_AMOUNT = 6;
 
 const int SLOT_SIZE = 8;
 const int STACK_ALIGN = 16;
@@ -26,21 +25,9 @@ string to_dec(int value) {
 
 }
 
-X64CodeGenerator::X64CodeGenerator(SymbolTable *symTable, ostream &output,
-                                   const CompileTarget &asm_target)
+X64CodeGenerator::X64CodeGenerator(SymbolTable *symTable, ostream &output)
         : out(output) {
     this -> symbolTable = symTable;
-    this -> target = asm_target;
-    this -> is_linux = asm_target.platform == SystemPlatform::Linux;
-    if(asm_target.platform == SystemPlatform::Windows){
-        this -> argument_registers = MICROSOFT_REGISTERS;
-        this -> register_argument_amount = 4;
-        this -> shadow_space = 32;
-    }else{
-        this -> argument_registers = SYSTEM_V_REGISTERS;
-        this -> register_argument_amount = 6;
-        this -> shadow_space = 0;
-    }
     this -> frame_size = 0;
     this -> epilogue_emitted = false;
 }
@@ -60,10 +47,8 @@ void X64CodeGenerator::generate() {
         generate_function(functions[i]);
     }
     emit_static_data();
-    if(is_linux){
-        // 不声明这一段的话，链接器会把栈当成可执行并给出警告
-        line("\t.section .note.GNU-stack,\"\",@progbits");
-    }
+    // 不声明这一段的话，链接器会把栈当成可执行并给出警告
+    line("\t.section .note.GNU-stack,\"\",@progbits");
 }
 
 void X64CodeGenerator::generate_function(Function *function) {
@@ -74,9 +59,7 @@ void X64CodeGenerator::generate_function(Function *function) {
     string symbol = function_symbol(function -> get_function_name());
     line("\t.p2align 4");
     line("\t.globl " + symbol);
-    if(is_linux){
-        line("\t.type " + symbol + ",@function");
-    }
+    line("\t.type " + symbol + ",@function");
     line(symbol + ":");
     emit_prologue();
     emit_arguments(function);
@@ -86,9 +69,7 @@ void X64CodeGenerator::generate_function(Function *function) {
         // 出口块被优化掉时补齐退栈序列，否则函数会直接落入下一个函数
         emit_epilogue();
     }
-    if(is_linux){
-        line("\t.size " + symbol + ",.-" + symbol);
-    }
+    line("\t.size " + symbol + ",.-" + symbol);
     line("");
 }
 
@@ -130,15 +111,15 @@ void X64CodeGenerator::emit_prologue() {
 void X64CodeGenerator::emit_arguments(Function *function) {
     vector<Variable *> parameters = function -> get_parameters();
     int amount = (int)parameters.size();
-    int register_amount = amount < register_argument_amount ? amount : register_argument_amount;
+    int register_amount = amount < REGISTER_ARGUMENT_AMOUNT ? amount : REGISTER_ARGUMENT_AMOUNT;
     for(int index = 0 ; index < register_amount ; index ++ ){
         int offset = parameters[index] -> get_frame_offset();
-        line("\tmovq %" + string(argument_registers[index]) + ", " + frame_ref(offset));
+        line("\tmovq %" + string(ARGUMENT_REGISTERS[index]) + ", " + frame_ref(offset));
     }
-    for(int index = register_argument_amount ; index < amount ; index ++ ){
+    for(int index = REGISTER_ARGUMENT_AMOUNT ; index < amount ; index ++ ){
         int offset = parameters[index] -> get_frame_offset();
-        // 寄存器装不下的实参由调用者放栈上：返回地址 8 + 已保存的 rbp 8 + 影子空间
-        int source = 16 + shadow_space + SLOT_SIZE * (index - register_argument_amount);
+        // 寄存器装不下的实参由调用者放栈上：返回地址 8 加上已保存的 rbp 8
+        int source = 16 + SLOT_SIZE * (index - REGISTER_ARGUMENT_AMOUNT);
         line("\tmovq " + to_dec(source) + "(%rbp), %" + string(RIGHT_REG));
         line("\tmovq %" + string(RIGHT_REG) + ", " + frame_ref(offset));
     }
@@ -146,20 +127,20 @@ void X64CodeGenerator::emit_arguments(Function *function) {
 
 void X64CodeGenerator::emit_call(Function *function) {
     int amount = (int)pending_args.size();
-    int stack_amount = amount <= register_argument_amount ? 0 : amount - register_argument_amount;
-    int size = align_up(shadow_space + SLOT_SIZE * stack_amount,STACK_ALIGN);
+    int stack_amount = amount <= REGISTER_ARGUMENT_AMOUNT ? 0 : amount - REGISTER_ARGUMENT_AMOUNT;
+    int size = align_up(SLOT_SIZE * stack_amount,STACK_ALIGN);
     if(size > 0){
         line("\tsubq $" + to_dec(size) + ", %rsp");
     }
     for(int index = 0 ; index < amount ; index ++ ){
         // pending_args 记录的是中间指令顺序，即源程序实参的逆序
         Variable * argument = pending_args[amount - 1 - index];
-        if(index < register_argument_amount){
-            load_value(argument,argument_registers[index]);
+        if(index < REGISTER_ARGUMENT_AMOUNT){
+            load_value(argument,ARGUMENT_REGISTERS[index]);
         }else{
             load_value(argument,RIGHT_REG);
             line("\tmovq %" + string(RIGHT_REG) + ", "
-                 + to_dec(shadow_space + SLOT_SIZE * (index - register_argument_amount)) + "(%rsp)");
+                 + to_dec(SLOT_SIZE * (index - REGISTER_ARGUMENT_AMOUNT)) + "(%rsp)");
         }
     }
     if(function != NULL){
@@ -307,7 +288,7 @@ void X64CodeGenerator::emit_body(vector<IntermediateInstruct *> &codes) {
                 break;
             case OP_READ: {
                 string format = read_format(result);
-                const char * address_reg = argument_registers[1];
+                const char * address_reg = ARGUMENT_REGISTERS[1];
                 if(result -> is_cell()){
                     // input a[i] / input *p：写入的地址就是单元里存的指针值
                     load_value(result -> get_pointer(),address_reg);
@@ -322,7 +303,7 @@ void X64CodeGenerator::emit_body(vector<IntermediateInstruct *> &codes) {
                 break;
             }
             case OP_PRINT:
-                load_value(left,argument_registers[1]);
+                load_value(left,ARGUMENT_REGISTERS[1]);
                 emit_vararg_call(print_format(left),"printf");
                 break;
             default:
@@ -381,15 +362,9 @@ void X64CodeGenerator::emit_mod(IntermediateInstruct *instruct) {
 }
 
 void X64CodeGenerator::emit_vararg_call(const string & format,const char * callee) {
-    if(shadow_space > 0){
-        line("\tsubq $" + to_dec(shadow_space) + ", %rsp");
-    }
-    load_symbol_address(string_symbol(format),argument_registers[0]);
+    load_symbol_address(string_symbol(format),ARGUMENT_REGISTERS[0]);
     line("\txorl %eax, %eax");
     line("\tcall " + function_symbol(callee));
-    if(shadow_space > 0){
-        line("\taddq $" + to_dec(shadow_space) + ", %rsp");
-    }
 }
 
 X64CodeGenerator::StorageKind X64CodeGenerator::storage_of(Variable *variable) {
@@ -474,13 +449,13 @@ void X64CodeGenerator::store_value(Variable *variable,const char * src) {
 }
 
 void X64CodeGenerator::load_symbol_address(const string & symbol,const char * dest) {
-    // x64 取静态数据地址一律 RIP 相对，两种封装都由链接器负责重定位
+    // x64 取静态数据地址一律 RIP 相对，重定位由链接器负责
     line("\tleaq " + symbol + "(%rip), %" + string(dest));
 }
 
 void X64CodeGenerator::emit_static_data() {
     if(!string_contents.empty()){
-        line(is_linux ? "\t.section .rodata" : "\t.section .rdata,\"dr\"");
+        line("\t.section .rodata");
         for(unsigned long i = 0 ; i < string_contents.size() ; i ++ ){
             line(string_symbol(string_contents[i]) + ":");
             line("\t.asciz \"" + escape(string_contents[i]) + "\"");
@@ -506,11 +481,9 @@ void X64CodeGenerator::emit_static_data() {
         }
         line("\t.p2align 3");
         string symbol = global_symbol(variable);
-        if(is_linux){
-            // 与 aarch64 后端一致：标成对象类型并限制可见性，别撞进 libc 的同名符号
-            line("\t.hidden " + symbol);
-            line("\t.type " + symbol + ",@object");
-        }
+        // 与 aarch64 后端一致：标成对象类型并限制可见性，别撞进 libc 的同名符号
+        line("\t.hidden " + symbol);
+        line("\t.type " + symbol + ",@object");
         line(symbol + ":");
         if(variable -> is_init()){
             line("\t.quad " + to_dec(variable -> get_int_value()));
@@ -548,8 +521,8 @@ string X64CodeGenerator::string_symbol(const string & content) {
 }
 
 string X64CodeGenerator::int_format() {
-    // msvcrt 家族只认 %I64d，glibc 用 %lld
-    return target.platform == SystemPlatform::Windows ? "%I64d" : "%lld";
+    // glibc 用 %lld；windows 走 MASM 后端，那边是 %I64d
+    return "%lld";
 }
 
 string X64CodeGenerator::read_format(Variable *variable) {

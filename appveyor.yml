@@ -10,8 +10,26 @@ configuration:
 - Debug
 - Release
 
+# Windows is the only host that can assemble, link and run the two COFF targets, so the end-to-end
+# suite lives here and GitHub Actions covers macOS and Linux. Everything is Microsoft's own
+# toolchain: MSVC builds the compiler, ml.exe / ml64.exe assemble the MASM output and link.exe links
+# it against msvcrt.lib. The compiler's word size decides the host triple, so the x86 job needs the
+# 32-bit assembler and the x64 job the 64-bit one. bash is only a script interpreter here, and the
+# cases run once, in Release; the Debug jobs only prove MSVC can build the compiler.
 install:
-- ps: cmake --version
+- ps: |
+    cmake --version
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if (-not $vs) { throw "No Visual Studio C++ toolchain on this image." }
+    Import-Module (Join-Path $vs "Microsoft.VisualStudio.DevShell.dll")
+    $arch = if ($env:PLATFORM -eq "x64") { "amd64" } else { "x86" }
+    # ml.exe / ml64.exe and link.exe are only on PATH after the developer environment is loaded
+    Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=$arch -no_logo" | Out-Null
+    $assembler = if ($arch -eq "amd64") { "ml64.exe" } else { "ml.exe" }
+    foreach ($tool in @($assembler, "link.exe")) {
+        if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool is not on PATH." }
+    }
 
 before_build:
 - ps: |
@@ -25,5 +43,16 @@ before_build:
 
 build_script:
 - ps: cmake --build build --config $env:CONFIGURATION -- /m /v:minimal
+
+after_build:
+- ps: |
+    if ($env:CONFIGURATION -ne "Release") { return }
+    # run.sh reuses the compiler it is handed through SHAOLANG instead of rebuilding with CXX.
+    $exe = Join-Path $env:APPVEYOR_BUILD_FOLDER "build\$env:CONFIGURATION\shaolang.exe"
+    if (-not (Test-Path $exe)) { throw "Cannot find $exe" }
+    $folder = & C:\msys64\usr\bin\cygpath.exe -u $env:APPVEYOR_BUILD_FOLDER
+    $compiler = & C:\msys64\usr\bin\cygpath.exe -u $exe
+    & C:\msys64\usr\bin\bash.exe -c ('cd "' + $folder + '" && SHAOLANG="' + $compiler + '" bash test/e2e/run.sh')
+    if ($LASTEXITCODE -ne 0) { throw "End-to-end suite failed" }
 
 deploy: off

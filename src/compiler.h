@@ -18,6 +18,8 @@
 #include "codegen/aarch64_codegen.h"
 #include "codegen/x86_codegen.h"
 #include "codegen/x64_codegen.h"
+#include "codegen/x86_masm_codegen.h"
+#include "codegen/x64_masm_codegen.h"
 #include "codegen/target.h"
 
 class Compiler {

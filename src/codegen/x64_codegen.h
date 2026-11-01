@@ -5,21 +5,19 @@
 #include <ostream>
 #include <vector>
 
-#include "codegen/target.h"
 #include "symbols/symbol_table.h"
 #include "symbols/function.h"
 #include "symbols/variable.h"
 #include "ir/inter_code.h"
 
 /**
- * 中间指令到 X64 (amd64) 汇编的转换器，输出 windows-x64 (PE/COFF) 与
- * linux-x64 (ELF) 两种格式。
+ * 中间指令到 X64 (amd64) 汇编的转换器，输出 linux-x64 (ELF)。
+ * windows-x64 的 MASM 文本由 X64MasmCodeGenerator 负责。
  *
- * 值都是 64 位，一个栈槽装一个值，与 ARM64 后端同构；差别在调用约定：
- * Microsoft x64 前 4 个实参走 rcx/rdx/r8/r9 并且每个调用点都要预留 32 字节
- * shadow space，System V x64 前 6 个走 rdi/rsi/rdx/rcx/r8/r9 且没有 shadow space。
- * 传参寄存器、寄存器个数与影子空间都按平台取值。表达式暂存用 r10/r11（volatile），
- * 除法走 rdx:rax，可变参数调用前把 al 清 0（两套 ABI 都用 al 记传出的 XMM 个数）。
+ * 值都是 64 位，一个栈槽装一个值，与 ARM64 后端同构。调用约定是 System V x64：
+ * 前 6 个实参走 rdi/rsi/rdx/rcx/r8/r9，第 7 个起放栈上，没有影子空间。
+ * 表达式暂存用 r10/r11（volatile），除法走 rdx:rax，可变参数调用前把 al 清 0
+ * （它告诉被调方传出了几个 XMM 实参）。
  */
 class X64CodeGenerator {
 
@@ -35,13 +33,6 @@ private:
 
     ostream & out;
     SymbolTable * symbolTable;
-    CompileTarget target;
-    bool is_linux;
-    // 两套 x64 ABI 只在传参寄存器、寄存器个数与影子空间上分叉
-    const char * const * argument_registers;
-    int register_argument_amount;
-    int shadow_space;
-
     std::map<string,int> string_labels;
     vector<string> string_contents;
     vector<Variable *> pending_args;
@@ -88,7 +79,7 @@ private:
 
 public:
 
-    X64CodeGenerator(SymbolTable * symTable,ostream & output,const CompileTarget & asm_target);
+    X64CodeGenerator(SymbolTable * symTable,ostream & output);
 
     void generate();
 

@@ -33,11 +33,21 @@ void Compiler::compile() {
 void Compiler::emit_assembly(ostream & output,const CompileTarget & target) {
     symbolTable -> optimize();
     if(target.architecture == Architecture::X86){
-        X86CodeGenerator generator(symbolTable,output,target);
-        generator.generate();
+        if(target.platform == SystemPlatform::Windows){
+            X86MasmCodeGenerator generator(symbolTable,output);
+            generator.generate();
+        }else{
+            X86CodeGenerator generator(symbolTable,output,target);
+            generator.generate();
+        }
     }else if(target.architecture == Architecture::X64){
-        X64CodeGenerator generator(symbolTable,output,target);
-        generator.generate();
+        if(target.platform == SystemPlatform::Windows){
+            X64MasmCodeGenerator generator(symbolTable,output);
+            generator.generate();
+        }else{
+            X64CodeGenerator generator(symbolTable,output);
+            generator.generate();
+        }
     }else{
         AArch64CodeGenerator generator(symbolTable,output,target);
         generator.generate();

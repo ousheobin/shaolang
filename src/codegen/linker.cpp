@@ -1,7 +1,28 @@
 #include "linker.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <sstream>
+
+namespace {
+
+// 工具链在不在 PATH 上，用 where 探一次；ml.exe 与 link.exe 只有加载了
+// vcvarsall.bat 的终端（开发者命令提示符）才找得到
+bool tool_available(const std::string & tool) {
+    return std::system(("where " + tool + " >nul 2>nul").c_str()) == 0;
+}
+
+std::string object_path_of(const std::string & assembly_path) {
+    std::string path = assembly_path;
+    size_t dot = path.rfind('.');
+    size_t separator = path.find_last_of("/\\");
+    if(dot != std::string::npos && (separator == std::string::npos || dot > separator)){
+        path.erase(dot);
+    }
+    return path + ".obj";
+}
+
+}
 
 std::string Linker::shell_quote(const std::string & path) {
 #if defined(WINDOWS) || defined(_WIN32)
@@ -44,15 +65,11 @@ bool Linker::linkable_on_host(const CompileTarget & target,std::string & reason)
 
 bool Linker::assemble_and_link(const std::string & assembly_path,const std::string & output_path,
                                const CompileTarget & target,std::string & failure) {
+    if(target.platform == SystemPlatform::Windows){
+        return link_coff(assembly_path,output_path,target,failure);
+    }
     // 装配与链接都交给本机工具链驱动，避免硬编码各平台的 crt、syslibroot 参数。
-    // Windows 上没有 cc 这个驱动名，MinGW 装的是 gcc
-    std::string command = std::string(
-#if defined(WINDOWS) || defined(_WIN32)
-            "gcc -o "
-#else
-            "cc -o "
-#endif
-            ) + shell_quote(output_path) + " " + shell_quote(assembly_path);
+    std::string command = "cc -o " + shell_quote(output_path) + " " + shell_quote(assembly_path);
     if(target.platform == SystemPlatform::MacOS){
         // 32 位与 64 位的指令集不同，必须显式指定，否则工具链按本机架构装配必然失败
         if(target.architecture == Architecture::X86){
@@ -78,4 +95,35 @@ bool Linker::assemble_and_link(const std::string & assembly_path,const std::stri
         }
     }
     return true;
+}
+
+bool Linker::link_coff(const std::string & assembly_path,const std::string & output_path,
+                       const CompileTarget & target,std::string & failure) {
+    std::string assembler = target.architecture == Architecture::X64 ? "ml64.exe" : "ml.exe";
+    if(!tool_available(assembler) || !tool_available("link.exe")){
+        std::stringstream ss;
+        ss << "找不到 " << (tool_available(assembler) ? "link.exe" : assembler)
+           << "：windows 目标的装配与链接要用 Visual Studio 自带的 MASM 和链接器，"
+           << "请在「开发者命令提示符」（已加载 vcvarsall.bat）里运行，"
+           << "装好 Visual Studio 或 Build Tools 即可，也可改用 -S 只生成汇编文件";
+        failure = ss.str();
+        return false;
+    }
+    // 目标文件只是链接的中间产物，和汇编一样写完就用完，不留在这台机器上
+    std::string object = object_path_of(assembly_path);
+    std::string command = assembler + " /nologo /c /Fo" + shell_quote(object)
+                          + " " + shell_quote(assembly_path);
+    if(std::system(command.c_str()) != 0){
+        std::remove(object.c_str());
+        failure = "装配失败：" + command;
+        return false;
+    }
+    command = "link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:" + shell_quote(output_path)
+              + " " + shell_quote(object) + " msvcrt.lib";
+    bool linked = std::system(command.c_str()) == 0;
+    std::remove(object.c_str());
+    if(!linked){
+        failure = "链接失败：" + command;
+    }
+    return linked;
 }

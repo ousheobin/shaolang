@@ -48,7 +48,6 @@ X86CodeGenerator::X86CodeGenerator(SymbolTable *symTable, ostream &output,
                                    const CompileTarget &asm_target)
         : out(output) {
     this -> symbolTable = symTable;
-    this -> target = asm_target;
     this -> is_macho = asm_target.platform == SystemPlatform::MacOS;
     this -> is_linux = asm_target.platform == SystemPlatform::Linux;
     this -> frame_size = 0;
@@ -648,13 +647,7 @@ void X86CodeGenerator::emit_divmod_helper() {
 
 void X86CodeGenerator::emit_static_data() {
     if(!string_contents.empty()){
-        if(is_macho){
-            line("\t.section __TEXT,__cstring,cstring_literals");
-        }else if(is_linux){
-            line("\t.section .rodata");
-        }else{
-            line("\t.section .rdata,\"dr\"");
-        }
+        line(is_macho ? "\t.section __TEXT,__cstring,cstring_literals" : "\t.section .rodata");
         for(unsigned long i = 0 ; i < string_contents.size() ; i ++ ){
             line(string_symbol(string_contents[i]) + ":");
             line("\t.asciz \"" + escape(string_contents[i]) + "\"");
@@ -706,12 +699,12 @@ string X86CodeGenerator::local_label(const string & label) {
 
 string X86CodeGenerator::next_local_label(const char * tag) {
     label_seq ++;
-    // 'L' 前缀在 Mach-O 与 COFF 里都是文件内标号，不会进符号表
+    // 'L' 前缀在 Mach-O 与 ELF 里都是文件内标号，不会进符号表
     return string("L_") + tag + to_dec(label_seq);
 }
 
 string X86CodeGenerator::c_symbol(const string & name) {
-    // win32 与 Mach-O 的 i386 都给 C 符号加下划线前缀，ELF 不加
+    // Mach-O 的 i386 给 C 符号加下划线前缀，ELF 不加
     return is_linux ? name : "_" + name;
 }
 
@@ -736,8 +729,8 @@ string X86CodeGenerator::string_symbol(const string & content) {
 }
 
 string X86CodeGenerator::int_format() {
-    // msvcrt 家族只认 %I64d，glibc 与 Mach-O 的 libc 用 %lld
-    return target.platform == SystemPlatform::Windows ? "%I64d" : "%lld";
+    // glibc 与 Mach-O 的 libc 用 %lld；windows 走 MASM 后端，那边是 %I64d
+    return "%lld";
 }
 
 string X86CodeGenerator::read_format(Variable *variable) {

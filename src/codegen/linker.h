@@ -16,6 +16,10 @@ private:
 
     static std::string shell_quote(const std::string & path);
 
+    // windows 的两个 COFF 目标走微软自家的工具链：MASM 装配，link.exe 链接
+    static bool link_coff(const std::string & assembly_path,const std::string & output_path,
+                          const CompileTarget & target,std::string & failure);
+
 public:
 
     static bool linkable_on_host(const CompileTarget & target,std::string & reason);

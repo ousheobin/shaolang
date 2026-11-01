@@ -8,6 +8,7 @@ A tiny compiler.
 
 - CMake (3.10 and above)
 - GCC, Clang or MSVC
+- Visual Studio or [Build Tools for Visual Studio](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) to link windows-x86 and windows-x64 programs
 
 ### Build ###
 
@@ -63,6 +64,16 @@ shaolang demo.sl --target=linux-arm64 -S -o demo.s
 shaolang demo.sl -ir                   # intermediate code, no output file
 ```
 
-Seven targets cover three architectures: arm64 on macOS and Linux, x86 on macOS, Linux and Windows, x64 on Linux and Windows. windows-arm64 stays out of scope. Linking runs through the host toolchain, so a target whose platform or word size differs from the host is declined before the toolchain is invoked: the driver reports that only assembly can be generated and exits without a link failure, which makes -S the only meaningful option there. Each host therefore links its own target natively, and the remaining combinations are checked as far as the assembler: the CI matrix runs the suite on linux-arm64, linux-x64, macos-arm64 and, under MSYS2, windows-x86 and windows-x64, while test/e2e/run.sh cross-assembles every target the local toolchain is able to target.
+Seven targets cover three architectures; windows-arm64 stays out of scope. Each host links only its own target: when the system or word size differs from the host, the driver declines before invoking the toolchain, reports that assembly is all it can generate and exits without a link failure, which makes -S the only meaningful option there. The Windows rows are MASM text, so ml or ml64 and link must already be on the PATH, meaning the compiler runs from a Developer Command Prompt or a shell that has loaded vcvarsall; the driver names the missing tool otherwise.
+
+| Target | System | Instruction set | Assembly syntax | Toolchain needed to link |
+| --- | --- | --- | --- | --- |
+| macos-arm64 | macOS | AArch64 | GNU assembler | Xcode command line tools |
+| macos-x86 | macOS | i386 | GNU assembler | Xcode command line tools with an i386 SDK |
+| linux-arm64 | Linux | AArch64 | GNU assembler | gcc or clang, plus binutils |
+| linux-x86 | Linux | i386 | GNU assembler | a 32-bit capable gcc, plus binutils |
+| linux-x64 | Linux | x86-64 | GNU assembler | gcc or clang, plus binutils |
+| windows-x86 | Windows | i386 | MASM | Visual Studio: ml and link |
+| windows-x64 | Windows | x86-64 | MASM | Visual Studio: ml64 and link |
 
 Regression tests live in test/e2e: one .sl source plus the .expected output per case, run by test/e2e/run.sh, which builds the compiler, compiles every case and compares stdout and exit status byte for byte.

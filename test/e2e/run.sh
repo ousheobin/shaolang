@@ -178,8 +178,6 @@ X64_PROBE=$'\t.text\n\taddq %rcx, %rax\n\tret'
 cross_round linux-arm64 aarch64-linux-gnu "$ARM64_PROBE"
 cross_round linux-x86 i686-unknown-linux-gnu "$X86_PROBE"
 cross_round linux-x64 x86_64-unknown-linux-gnu "$X64_PROBE"
-cross_round windows-x86 i686-w64-windows-gnu "$X86_PROBE"
-cross_round windows-x64 x86_64-w64-windows-gnu "$X64_PROBE"
 cross_round macos-x86 i386-apple-macosx10.15 "$X86_PROBE"
 
 echo

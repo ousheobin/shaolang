@@ -12,8 +12,9 @@
 #include "ir/inter_code.h"
 
 /**
- * 中间指令到 X86 (i386) 汇编的转换器，输出 windows-x86 (PE/COFF)、linux-x86 (ELF)
- * 与 macos-x86 (Mach-O i386) 三种汇编格式，调用约定都是 cdecl。
+ * 中间指令到 X86 (i386) 汇编的转换器，输出 linux-x86 (ELF) 与 macos-x86 (Mach-O i386)
+ * 两种 GAS 汇编格式，调用约定都是 cdecl。windows-x86 的 MASM 文本由
+ * X86MasmCodeGenerator 负责。
  *
  * 语言语义的值都是 64 位整数，32 位目标上每个值放进一对 eax:edx（低位在前）的
  * 寄存器对，栈上一个值仍占一个 8 字节槽（两个相邻字）。加减乘用 32 位指令拼出，
@@ -35,7 +36,6 @@ private:
 
     ostream & out;
     SymbolTable * symbolTable;
-    CompileTarget target;
     bool is_macho;
     bool is_linux;
 

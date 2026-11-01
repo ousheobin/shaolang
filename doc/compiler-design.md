@@ -33,14 +33,15 @@ ShaoLang 编译器是一个**单遍（one-pass）语法导向翻译（syntax-dir
                                     │
                     ┌───────────────┴───────────────┐
                     ▼ -ir                            ▼ -S / 缺省
-              show_all_code() 打印 IR        X86 / X64 / AArch64 三选一  codegen/*
-                                            （Mach-O / ELF / COFF 汇编）
-                                                │            └─ -o 无 -S：Linker 调 cc + codesign 出可执行文件
+              show_all_code() 打印 IR        五个后端按三元组挑一个    codegen/*
+                                            （GNU 语法 + MASM 语法，
+                                              Mach-O / ELF / COFF 汇编）
+                                                │     └─ -o 无 -S：Linker 调 ml/link 或 cc + codesign 出可执行文件
 ```
 
 SymbolTable 与 IRGenerator 互相持有指针：登记变量这一步就会生成 OP_DECLARE（见 §3.4）。
 
-两条出口由 Compiler::compile() 分岔（compiler.cpp:17-31）：带 -ir 时是解析 → 打印原始 IR → optimize() → 打印优化后 IR，否则解析完就直接返回（23-26），IR 不打印。汇编由另一个入口 Compiler::emit_assembly()（compiler.cpp:33-45）产出，它调 optimize()（Function::do_optimize 有 is_opt 幂等保护，重复调用是空操作），再按 target.architecture 在 X86CodeGenerator / X64CodeGenerator / AArch64CodeGenerator 里三选一。
+两条出口由 Compiler::compile() 分岔（compiler.cpp:17-31）：带 -ir 时是解析 → 打印原始 IR → optimize() → 打印优化后 IR，否则解析完就直接返回（23-26），IR 不打印。汇编由另一个入口 Compiler::emit_assembly()（compiler.cpp:33-55）产出，它调 optimize()（Function::do_optimize 有 is_opt 幂等保护，重复调用是空操作），再按架构与平台五选一：Windows 的两个 x86 / x64 目标走 MASM 语法的 X86MasmCodeGenerator / X64MasmCodeGenerator，其余 x86 / x64 目标走 GNU 语法的 X86CodeGenerator / X64CodeGenerator，ARM64 走 AArch64CodeGenerator。五个后端读的是同一份优化后 IR，区别只在落地方式。
 
 ---
 
@@ -66,9 +67,11 @@ SymbolTable 与 IRGenerator 互相持有指针：登记变量这一步就会生�
 | src/optimization/const_opt.{h,cpp} | 常量格迭代分析 + 代数化简 + 常量跳转化简 | ConstPropagation |
 | src/codegen/target.{h,cpp} | 编译目标三元组（架构 × 平台）、--target= 解析、支持性判定 | CompileTarget Architecture SystemPlatform |
 | src/codegen/aarch64_codegen.{h,cpp} | 优化后 IR → ARM64 汇编：帧分配、调用约定、静态数据、两种目标格式 | AArch64CodeGenerator |
-| src/codegen/x86_codegen.{h,cpp} | 优化后 IR → i386 汇编：64 位值拆成字对、cdecl 全栈实参、内置长除子程序，一份产码出 COFF / ELF / Mach-O | X86CodeGenerator |
-| src/codegen/x64_codegen.{h,cpp} | 优化后 IR → x86_64 汇编：Microsoft x64 与 System V 两套 ABI（实参寄存器数与影子空间参数化），出 COFF / ELF | X64CodeGenerator |
-| src/codegen/linker.{h,cpp} | 用本机工具链把汇编装配、链接成可执行文件，macOS 上补 ad-hoc 签名 | Linker |
+| src/codegen/x86_codegen.{h,cpp} | 优化后 IR → GNU 语法 i386 汇编：64 位值拆成字对、cdecl 全栈实参、内置长除子程序，一份产码出 ELF / Mach-O | X86CodeGenerator |
+| src/codegen/x64_codegen.{h,cpp} | 优化后 IR → GNU 语法 x86_64 汇编：System V x64 ABI（六个实参寄存器、无影子空间），出 ELF | X64CodeGenerator |
+| src/codegen/x86_masm_codegen.{h,cpp} | 优化后 IR → MASM 语法 i386 汇编（windows-x86 的 PE/COFF）：与 GNU 版同一套字对 lowering，装饰换成 .model flat, C + PROC/ENDP | X86MasmCodeGenerator |
+| src/codegen/x64_masm_codegen.{h,cpp} | 优化后 IR → MASM 语法 x86_64 汇编（windows-x64 的 PE/COFF）：Microsoft x64 ABI，四个实参寄存器加 32 字节影子空间 | X64MasmCodeGenerator |
+| src/codegen/linker.{h,cpp} | 用本机工具链把汇编装配、链接成可执行文件：Windows 走 ml/ml64 + link，其余走 cc，macOS 补 ad-hoc 签名 | Linker |
 | src/commons/type_util.{h,cpp} | 类型归一、相容判定、偏移步长、类型宽度 | TypeUtil |
 | src/commons/error.{h,cpp} | 静态诊断输出与计数 | Error |
 | src/commons/argument.{h,cpp} | 静态开关（-t / -b / -S / 生成可执行文件） | CompilerArguments |
@@ -282,7 +285,7 @@ if .L5 no true jmp to .L6             goto .L6
 
 ### 3.10 后端：ARM64 / X86 / X64 汇编生成与本机链接（codegen/*）
 
--S 把优化后的三地址码翻成目标机汇编，目标由 --target= 决定（codegen/target.cpp：host_target 先看平台宏 MAC_OSX / LINUX / WINDOWS，再靠编译器自身的 __APPLE__ / __linux__ / _WIN32 与架构宏兜底，所以不经 CMake 直接编译也能识别本机；parse_target 认 macos-arm64 / darwin-arm64 / apple-arm64 / linux-arm64 / aarch64-linux / macos-x86 / darwin-x86 / osx-x86 / linux-x86 / i386-linux / x86-linux / windows-x86 / win-x86 / i386-windows / linux-x64 / x86_64-linux / amd64-linux / windows-x64 / win-x64 / amd64-windows；target_supported 放行其中七种三元组，windows-arm64 单独给出不支持的原因，macos-x64 也落在兜底的拒绝列表里）。Compiler::emit_assembly（compiler.cpp）按架构挑 X86CodeGenerator / X64CodeGenerator / AArch64CodeGenerator，三个后端读的是同一份优化后 IR，区别只在落地方式。不给 -S 也不给 -ir 时，编译器的缺省任务就是把这份汇编交给本机工具链装配、链接成可直接运行的可执行文件（见本节末）。
+-S 把优化后的三地址码翻成目标机汇编，目标由 --target= 决定（codegen/target.cpp：host_target 先看平台宏 MAC_OSX / LINUX / WINDOWS，再靠编译器自身的 __APPLE__ / __linux__ / _WIN32 与架构宏兜底，所以不经 CMake 直接编译也能识别本机；parse_target 认 macos-arm64 / darwin-arm64 / apple-arm64 / linux-arm64 / aarch64-linux / macos-x86 / darwin-x86 / osx-x86 / linux-x86 / i386-linux / x86-linux / windows-x86 / win-x86 / i386-windows / linux-x64 / x86_64-linux / amd64-linux / windows-x64 / win-x64 / amd64-windows；target_supported 放行其中七种三元组，windows-arm64 单独给出不支持的原因，macos-x64 也落在兜底的拒绝列表里）。Compiler::emit_assembly（compiler.cpp:33-55）先按架构再按平台挑后端：Windows 的两个 x86 / x64 目标用 MASM 语法的 X86MasmCodeGenerator / X64MasmCodeGenerator（微软的 ml / ml64 只认 Intel 语法），其余 x86 / x64 用 GNU 语法的 X86CodeGenerator / X64CodeGenerator，ARM64 用 AArch64CodeGenerator。五个后端读的是同一份优化后 IR，区别只在落地方式。不给 -S 也不给 -ir 时，编译器的缺省任务就是把这份汇编交给本机工具链装配、链接成可直接运行的可执行文件（见本节末）。
 
 下面先讲 ARM64，它是最早也是结构最直白的一版；X86 与 X64 各自的差异集中在 ARM64 段落之后的两组小段。
 
@@ -318,31 +321,37 @@ if .L5 no true jmp to .L6             goto .L6
 
 静态数据（emit_static_data，489-539）：字符串去重后进 __TEXT,__cstring / .rodata，全局变量进 __DATA,__data / .data（未初始化 .zero 8，数组是 .zero 8 × 元素个数，已初始化 .quad 值）；Mach-O 下两者都加 .private_extern（ELF 用 .hidden + .type/@object），因为 adrp 需要真实符号而不是仅本文件可见的临时标号。字符串内容经 escape()（597-615）处理：双引号与反斜杠加转义，不可打印字节写成固定三位八进制，避免和后续数字粘连。
 
-X86 后端（codegen/x86_codegen.cpp）是一套产码逻辑出三种封装：windows-x86 的 PE/COFF、linux-x86 的 ELF、macos-x86 的 Mach-O，三者的调用约定都是 cdecl，所以平台差异全落在符号与段的装饰上（构造函数 47-58 用 is_macho / is_linux 两个布尔决定）。
+X86 后端（codegen/x86_codegen.cpp）是一套产码逻辑出两种封装：linux-x86 的 ELF 与 macos-x86 的 Mach-O，两者的调用约定都是 cdecl，所以平台差异全落在符号与段的装饰上（构造函数用 is_macho / is_linux 两个布尔决定）；windows-x86 交给 MASM 版后端（见本节末）。
 
-值仍然是 64 位有符号整数，但在 32 位机器上它是一对寄存器，低位在前：左操作数 eax:edx、右操作数 ecx:ebx（11-14）。%ebx 是 callee-saved，序言因此多压一格 pushl %ebx、退栈时弹回（149-159、195-200）。字面量在词法层就是 int32，所以常量拆出来是 movl $低字 加 movl $高字，而高字恒为 0 或 -1（68-75）——语言层面不存在需要第二个字的字面量。帧布局与 ARM64 同构（allocate_frame，122-147），只是 RESERVED_SLOTS = 1 让槽位从第 2 格起分配（对应序言里的 pushl %ebp + pushl %ebx），frame_size = align_up(8 × (槽数 + 1), 16)，序言收尾再补一条 andl $-16, %esp：cdecl 只保证调用点 16 字节对齐，printf 一类库函数内部的 SSE 访存才不会踩空。寻址没有 ARM64 那种窗口限制，位移是 32 位有符号数，offset(%ebp) 直接可用（frame_ref，489-491）。
+值仍然是 64 位有符号整数，但在 32 位机器上它是一对寄存器，低位在前：左操作数 eax:edx、右操作数 ecx:ebx（11-14）。%ebx 是 callee-saved，序言因此多压一格 pushl %ebx、退栈时弹回（148-159、194-199）。字面量在词法层就是 int32，所以常量拆出来是 movl $低字 加 movl $高字，而高字恒为 0 或 -1（67-76）——语言层面不存在需要第二个字的字面量。帧布局与 ARM64 同构（allocate_frame，121-146），只是 RESERVED_SLOTS = 1 让槽位从第 2 格起分配（对应序言里的 pushl %ebp + pushl %ebx），frame_size = align_up(8 × (槽数 + 1), 16)，序言收尾再补一条 andl $-16, %esp：cdecl 只保证调用点 16 字节对齐，printf 一类库函数内部的 SSE 访存才不会踩空。寻址没有 ARM64 那种窗口限制，位移是 32 位有符号数，offset(%ebp) 直接可用（frame_ref，488-490）。
 
-cdecl 没有实参寄存器：形参全部来自栈，emit_arguments（161-171）从 8 + 8i(%ebp) 逐字读出第 i 个实参的两个字再存进帧槽；调用点（emit_call，173-193）按 align_up(8 × 实参个数, 16) 预留空间，把 pending_args 的逆序逐字搬进 (%esp)，call 之后原样回收。返回值仍留在寄存器对里，取回后落进结果变量（320-326）。
+cdecl 没有实参寄存器：形参全部来自栈，emit_arguments（160-170）从 8 + 8i(%ebp) 逐字读出第 i 个实参的两个字再存进帧槽；调用点（emit_call，172-192）按 align_up(8 × 实参个数, 16) 预留空间，把 pending_args 的逆序逐字搬进 (%esp)，call 之后原样回收。返回值仍留在寄存器对里，取回后落进结果变量（319-325）。
 
-四则与比较要按字拼：加法 addl + adcl、减法 subl + sbbl、取负 notl + addl $1 + adcl $0（379-387、255-262）；乘法只保留低 64 位，a0×b0 用一条 mull 拿到完整积，两个交叉项各用一条 imull 取低 32 位累进高位字（389-404）。64/64 除法没有对应指令，后端因此自带一个 sl_divmod 子程序（565-647）：先取绝对值并记下两侧符号，做 64 轮「左移一位、够减则减去除数并把商当前位 or 上 1」的逐位长除，余数走 esi:edi，最后按符号异或决定商与余数是否再取负；除数为 0 时商取 0、余数取被除数，与 ARM64 的 sdiv + msub 行为一致。emit_div / emit_mod 只负责置 needs_divmod 再 call sl_divmod（406-417），子程序按需在末尾发射一次（77-94），只破坏 esi/edi，不动 callee-saved。比较先 cmpl 高位字，不等就跳到带符号的 setcc，相等再 cmpl 低位字、走不带符号的 setcc（419-437），两条路径都要 movzbl 把结果展成 0/1 再清掉高位字；这种「每处跳转要唯一标号」的地方由 next_local_label（707-711）发 L_cmp_hi1、L_cmp_end1 一类的计数标号，与 IR 自带的 .L 标号分开。条件跳转 OP_JMP_NEQ 则两个字各比一次、任一不等即跳（309-316）。
+四则与比较要按字拼：加法 addl + adcl、减法 subl + sbbl、取负 notl + addl $1 + adcl $0（378-386、254-261）；乘法只保留低 64 位，a0×b0 用一条 mull 拿到完整积，两个交叉项各用一条 imull 取低 32 位累进高位字（388-403）。64/64 除法没有对应指令，后端因此自带一个 sl_divmod 子程序（564-646）：先取绝对值并记下两侧符号，做 64 轮「左移一位、够减则减去除数并把商当前位 or 上 1」的逐位长除，余数走 esi:edi，最后按符号异或决定商与余数是否再取负；除数为 0 时商取 0、余数取被除数，与 ARM64 的 sdiv + msub 行为一致。emit_div / emit_mod 只负责置 needs_divmod 再 call sl_divmod（405-416），子程序按需在末尾发射一次（76-93），只破坏 esi/edi，不动 callee-saved。比较先 cmpl 高位字，不等就跳到带符号的 setcc，相等再 cmpl 低位字、走不带符号的 setcc（418-436），两条路径都要 movzbl 把结果展成 0/1 再清掉高位字；这种「每处跳转要唯一标号」的地方由 next_local_label（700-704）发 L_cmp_hi1、L_cmp_end1 一类的计数标号，与 IR 自带的 .L 标号分开。条件跳转 OP_JMP_NEQ 则两个字各比一次、任一不等即跳（308-315）。
 
-输入输出：格式串 Windows 用 %I64d、其余平台 %lld（738-742），char 用 %c、字符串用 %s。emit_vararg_call（454-468）在 %esp 处留 16 字节窗口，[esp] 放格式串地址，[esp+4] 与 [esp+8] 放值的两个字；scanf 只写地址那一格，%c 先把槽里两个字清零，免得 scanf 只写低字节时高位残留栈垃圾（351-369）。
+输入输出：格式串固定 %lld（731-734，Windows 的 %I64d 归 MASM 版后端），char 用 %c、字符串用 %s。emit_vararg_call（453-467）在 %esp 处留 16 字节窗口，[esp] 放格式串地址，[esp+4] 与 [esp+8] 放值的两个字；scanf 只写地址那一格，%c 先把槽里两个字清零，免得 scanf 只写低字节时高位残留栈垃圾（351-369）。
 
-平台装饰集中在三处：C 符号在 win32 与 Mach-O 带下划线前缀、ELF 不带，函数名、全局量 slg_ 与字符串 sls_ 都走同一个 c_symbol()（713-737）；字符串段写成 __TEXT,__cstring,cstring_literals / .rodata / .rdata,"dr"，全局量段写成 __DATA,__data / .data，ELF 下每个全局额外加 .hidden 与 .type/@object（649-697）；ELF 还给函数补 .type/@function 与 .size，并在文件末尾追加 .note.GNU-stack（90-93、104-118）。Mach-O 依旧要剥掉 IR 标号的 . 前缀（699-705）。静态数据的地址取法是 movl $符号, %dest（560-563），也就是绝对重定位——这正是 linux-x86 链接时必须补 -no-pie 的原因（见下段）。
+平台装饰集中在三处：C 符号在 Mach-O 带下划线前缀、ELF 不带，函数名、全局量 slg_ 与字符串 sls_ 都走同一个 c_symbol()（706-730）；字符串段写成 __TEXT,__cstring,cstring_literals 或 .rodata，全局量段写成 __DATA,__data 或 .data，ELF 下每个全局额外加 .hidden 与 .type/@object（648-691）；ELF 还给函数补 .type/@function 与 .size，并在文件末尾追加 .note.GNU-stack（76-93、95-119）。Mach-O 依旧要剥掉 IR 标号的 . 前缀（692-698）。静态数据的地址取法是 movl $符号, %dest（559-562），也就是绝对重定位——这正是 linux-x86 链接时必须补 -no-pie 的原因（见下段）。
 
-X64 后端（codegen/x64_codegen.cpp）覆盖 windows-x64（PE/COFF，Microsoft x64 ABI）与 linux-x64（ELF，System V ABI），一个值就是一个 64 位寄存器或一格 8 字节栈槽，不需要拆字；macos-x64 落在 target_supported 的兜底拒绝列表里。
+X64 后端（codegen/x64_codegen.cpp）只覆盖 linux-x64（ELF，System V ABI），一个值就是一个 64 位寄存器或一格 8 字节栈槽，不需要拆字；macos-x64 落在 target_supported 的兜底拒绝列表里，windows-x64 交给 MASM 版后端（见本节末）。
 
-表达式暂存固定用 r10 与 r11（LEFT_REG / RIGHT_REG，11-12），两个 ABI 都把它们划成 volatile，因此既不必保存恢复，也不会撞坏正在传的实参。返回值走 rax；除法走 rdx:rax——emit_div / emit_mod 把被除数装进 rax、cqto 扩符号、除数放 r11，再 idivq，商取 rax、余数取 rdx（366-381）。加减乘与比较都是单条指令（336-350），逻辑运算同样先把两侧归一化成 0/1（352-364）。
+表达式暂存固定用 r10 与 r11（LEFT_REG / RIGHT_REG，11-12），System V 把它们划成 volatile，因此既不必保存恢复，也不会撞坏正在传的实参。返回值走 rax；除法走 rdx:rax——emit_div / emit_mod 把被除数装进 rax、cqto 扩符号、除数放 r11，再 idivq，商取 rax、余数取 rdx（366-381）。加减乘与比较都是单条指令（336-350），逻辑运算同样先把两侧归一化成 0/1（352-364）。
 
-调用约定整组参数化（两张寄存器表 14-16，构造函数按平台挑，29-46）：Microsoft 用 rcx/rdx/r8/r9 四个实参寄存器且强制 32 字节影子空间，System V 用 rdi/rsi/rdx/rcx/r8/r9 六个且没有影子空间。由 register_argument_amount 与 shadow_space 推出两处地址：调用点预留 align_up(影子空间 + 8 × 栈实参数, 16)，栈实参落在 影子空间 + 8k(%rsp)（emit_call，147-172）；被调方从寄存器落栈之后剩下的形参在 16 + 影子空间 + 8k(%rbp)（emit_arguments，130-145）。帧是 pushq %rbp / movq %rsp,%rbp / subq $frame,%rsp（122-128），frame_size 已按 16 对齐，所以调用点天然满足对齐要求。
+调用约定固定一套（寄存器表 14-16，六个：rdi/rsi/rdx/rcx/r8/r9，第 7 个起放栈上，没有影子空间）。调用点预留 align_up(8 × 栈实参数, 16)，栈实参落在 8k(%rsp)（emit_call，128-153）；被调方从寄存器落栈之后剩下的形参在 16 + 8k(%rbp)（emit_arguments，111-126）。帧是 pushq %rbp / movq %rsp,%rbp / subq $frame,%rsp（103-109），frame_size 已按 16 对齐，所以调用点天然满足对齐要求。
 
-可变参数调用把格式串地址放进第一个实参寄存器，值全走寄存器，并且调用前补一条 xorl %eax,%eax——两个 ABI 都规定 AL 是传出的 XMM 个数（383-393）。静态数据用 leaq 符号(%rip),%dest 取地址（476-479），全是 PC 相对重定位，所以 linux-x64 不需要像 X86 后端那样关 PIE；COFF 的 x64 C 符号不带下划线前缀（529-533），Linux 侧的 .type/@function、.size、.hidden + .type/@object、.rodata 与 .note.GNU-stack 装饰与 X86 后端一致，整数格式串同样是 Windows %I64d、其余 %lld（550-554）。
+可变参数调用把格式串地址放进第一个实参寄存器，值全走寄存器，并且调用前补一条 xorl %eax,%eax——System V 规定 AL 是传出的 XMM 个数（364-374）。静态数据用 leaq 符号(%rip),%dest 取地址（451-454），全是 PC 相对重定位，所以 linux-x64 不需要像 X86 后端那样关 PIE；.type/@function、.size、.hidden + .type/@object、.rodata 与 .note.GNU-stack 这些 ELF 装饰与 X86 后端一致，整数格式串固定 %lld（523-527）。
 
-装配与链接（codegen/linker.cpp）是独立一步：linkable_on_host()（33-43）同时比较本机与目标的平台和架构，不一致就只出汇编；assemble_and_link()（45-81）把中间汇编写到 TMPDIR 下一个按进程号和文件序号命名的 .s（shaolang.cpp:25-38），Windows 下用 gcc -o 驱动（那边没有 cc 这个驱动名，MinGW 装的是 gcc），其余平台用 cc -o；macOS 按目标架构补 -arch i386 / -arch x86_64，linux-x86 补 -no-pie（X86 后端的静态数据是绝对地址引用，发行版默认的 PIE 链接会拒收这类重定位），macOS 链接完再补一次 codesign --force --sign - 的 ad-hoc 签名（Apple Silicon 内核拒绝执行未签名代码），成功后删掉临时 .s，失败则保留并打印命令。路径参数一律走 shell_quote()（6-31），POSIX 侧单引号转义，Windows 侧因为 cmd.exe 不认单引号而改用双引号。产物名在 Windows 下由 with_exe_suffix()（shaolang.cpp:54-61）补上 .exe，否则 CreateProcess 拒载。
+两个 MASM 后端（codegen/x86_masm_codegen.cpp 与 codegen/x64_masm_codegen.cpp）只服务 windows-x86 与 windows-x64：微软的 ml / ml64 认 Intel 语法，不认前面四份 GNU 文本用的 AT&T 语法，所以每个 Windows 三元组各配一份产码器。lowering 与对应的 GNU 版逐条同构——同一套字对寄存器、同样的 cdecl 全栈实参与 16 字节对齐的调用点、同样自带 sl_divmod 逐位长除、同样一个值一个 64 位槽——差别全在装饰上：文件头换成 .486 加 .model flat, C（x86 的 generate，81-97），C 命名约定由 MASM 负责补下划线，所以产码器写的是原名（c_symbol，705-708）；外部符号写成 EXTRN printf:PROC / EXTRN scanf:PROC（x64 写成 EXTERN，52-62），段用 .code / .const / .data，函数用 PUBLIC 符号 + 符号 PROC … 符号 ENDP 成对包住（generate_function，x86 99-119、x64 64-83），文件末尾必须补一条 END。访存写成 DWORD PTR [ebp-8] / QWORD PTR [rbp-8] 这种中缀形式，位移由 disp_text 统一成 ±N，槽位、栈实参与解引用分别由 slot_ref / slot_addr / stack_ref / word_at 拼出（x86 489-503、x64 402-416）。静态数据不再用 .asciz / .quad：格式串里的 % 在 MASM 中是运算符，转义也容易出错，所以写成符号 BYTE 37,73,54,52,100,0 的十进制字节列表再加一个 0（emit_static_data 与 byte_list，x86 661-692、754-762），全局量在 x86 是 ALIGN 4 + DWORD 低字, 高字（数组是 2 × 元素个数 DUP (0)），在 x64 是 ALIGN 8 + DQ（x64 481-513），取地址由 leaq 符号(%rip) 换成 mov reg, OFFSET FLAT:sym 与 mov reg, OFFSET sym（x86 572-575、x64 476-479）。整数格式串这边是 msvcrt 认的 %I64d（x86 732-735、x64 543-546）。
+
+MASM 特有的两个坑由命名兜住。IR 标号形如 .L1，开头的点 MASM 不认，因此剥掉点、再冠上函数序号（local_label，x86 694-698、x64 515-519），比较与条件跳转要的唯一计数标号同理由 next_local_label 发成 f序号_L_名序号（x86 700-703）。另一处是源程序里的函数名会直接变成 MASM 标号，而 add、sub、cmp 这些助记符在 MASM 里是保留字、做不了标号，所以除入口 main 要留给 CRT 保持原名之外，函数标号统一加 slf_ 前缀（function_symbol，x86 710-714、x64 521-525）；调用运行库时不能照这个规则走，printf / scanf 按原名引用（emit_vararg_call，x86 453-468、x64 373-381）。全局量与字符串仍是 slg_ / sls_ 前缀的文件内标号，不参与 C 命名约定（global_symbol，x86 716-718、x64 527-530）。
+
+装配与链接（codegen/linker.cpp）是独立一步：linkable_on_host()（54-64）同时比较本机与目标的平台和架构，不一致就只出汇编。非 Windows 目标走 assemble_and_link()（66-98）：cc -o 一把梭，macOS 按目标架构补 -arch i386 / -arch x86_64，linux-x86 补 -no-pie（X86 后端的静态数据是绝对地址引用，发行版默认的 PIE 链接会拒收这类重定位），链接完再补一次 codesign --force --sign - 的 ad-hoc 签名（Apple Silicon 内核拒绝执行未签名代码）。Windows 目标走 link_coff()（100-129）：先按架构挑 ml.exe 或 ml64.exe 把 MASM 文本装配成 .obj，再用 link.exe /SUBSYSTEM:CONSOLE 链上 msvcrt.lib；动手前用 where 探一次这两个工具（tool_available，11-13），探不到就报「windows 目标的装配与链接要用 Visual Studio 自带的 MASM 和链接器，请在开发者命令提示符里运行」并提示改用 -S——装 Visual Studio 或 Build Tools、或者换到已加载 vcvarsall.bat 的 shell 里是唯一的出路，编译器不自己去猜工具链在哪。两份中间产物都不留在这台机器上：.obj 无论链接成败都删（object_path_of 只负责把 .s 换成 .obj，15-25），临时 .s 由调用方删（见下段）。路径参数一律走 shell_quote()（27-52），POSIX 侧单引号转义，Windows 侧因为 cmd.exe 不认单引号而改用双引号。产物名在 Windows 下由 with_exe_suffix()（shaolang.cpp:102-109）补上 .exe，否则 CreateProcess 拒载。
+
+中间汇编的位置由驱动决定（temp_assembly_path，shaolang.cpp:44-86）：Windows 用 GetTempPathA，其余平台按 TMPDIR、TMP、TEMP、/var/tmp、/tmp 的顺序试，每个候选都要先过 usable_directory()（32-42）——Windows 查目录属性，POSIX 查 stat + S_ISDIR + access(R_OK|W_OK|X_OK)——因为环境变量给的路径未必是本机可执行文件认得出的那种（MSYS 一类的环境只转 argv，不转环境变量，会把 TMP 原样给成 /tmp），全部不可用就退回当前目录。文件名是 shaolang-进程号-文件序号.s，一律不带源文件名，因此编译 a.sl 不可能撞掉 /tmp 里别人的 a；链接一结束，成败都删（218-231），真要看汇编用 -S，那才是留给用户的产物。
 
 实测覆盖面由仓库里的 test/e2e/run.sh 维护：25 组随仓库提交的用例（.sl 配 .expected，脚本自定位、用 mktemp 工作目录，不在仓库里留中间产物）加上运行时生成的 300 / 600 个局部变量两组深栈用例，覆盖全局变量与 char 全局、局部字面初值、8 个以内与超过 8 个实参的调用（10 个实参求和 55 正确）、递归（fib(10) = 55）、void 调用、while / if / break / continue、input（int、char、数组元素、解引用单元）、字符串 output、300 与 600 个局部变量两种深度（后者已走 mov x10 的超窗口路径）、加减乘除与取模、负数、123456789 这类需要 movz + movk 拼出来的大常量，以及数组下标读写、取地址与解引用、指针传参、指针相减、通过单元自增。每组都要过「编译→装配→链接→运行→逐字节比对 stdout」，用例目录里另有 .in 喂标准输入、.exit 记期望退出码，两者也参与比对；Windows 上找可执行文件要带 .exe 后缀，脚本按 uname 的 NT 分支决定。
 
-本机跑不了的封装由 cross_round()（145-172）做交叉装配轮次：同一个用例用 --target= 指定三元组出一份汇编，再交给 clang --target= 装配成目标格式的目标文件，只验证「这份汇编本机的汇编器认不认」，链接与运行仍归各平台的原生作业。轮次覆盖 linux-arm64、linux-x86、linux-x64、windows-x86、windows-x64、macos-x86，每种先拿一小段目标架构的基础指令做探针，工具链不支持就打印跳过、不计失败，所以在没有交叉汇编器的机器上跑整套也只是少跑几轮。windows-x86 与 windows-x64 的真正运行验证由 CI 的 e2e-windows 作业负责：用 MSYS2 的 MINGW32 / MINGW64 原生工具链把编译器产出的程序编译并跑起来，两个 matrix 项互不阻塞（fail-fast: false），32 位工具链哪天装不上也不影响 64 位的结论。同一份 ARM64 产码在 --target=linux-arm64 下只有六处形态差异：无 .subsections_via_symbols、符号不带下划线前缀、多了 .type/@function 与 .size、段名换成 .rodata / .data（全局还额外加 .hidden + .type/@object）、页引用由 adrp+add @PAGE/@PAGEOFF 换成 adrp + add :lo12:、局部标号保留 IR 原本的 .L 前缀。
+本机跑不了的 GNU 封装由 cross_round()（145-172，调用在 178-181）做交叉装配轮次：同一个用例用 --target= 指定三元组出一份汇编，再交给 clang --target= 装配成目标格式的目标文件，只验证「这份汇编本机的汇编器认不认」，链接与运行仍归各平台的原生作业。轮次覆盖 linux-arm64、linux-x86、linux-x64、macos-x86，每种先拿一小段目标架构的基础指令做探针，工具链不支持就打印跳过、不计失败，所以在没有交叉汇编器的机器上跑整套也只是少跑几轮。两个 Windows 三元组不在这里：它们产的是 MASM 文本，本机的 clang 装不了，交叉装配没有意义，真正的验证由 AppVeyor 用 Visual Studio 的工具链原生完成（见下节）。同一份 ARM64 产码在 --target=linux-arm64 下只有六处形态差异：无 .subsections_via_symbols、符号不带下划线前缀、多了 .type/@function 与 .size、段名换成 .rodata / .data（全局还额外加 .hidden + .type/@object）、页引用由 adrp+add @PAGE/@PAGEOFF 换成 adrp + add :lo12:、局部标号保留 IR 原本的 .L 前缀。
 
 ### 3.11 诊断系统（commons/error.{h,cpp}）
 
@@ -379,7 +388,7 @@ shaolang 源文件 [options]
   c++ -std=c++11 -Isrc -DMAC_OSX -DLF $(find src -name '*.cpp') -o shaolang
   
   -S 的产物可以手工链接（cc -arch arm64 x.s -o x），也可以让编译器自己走完（shaolang x.sl -o x）。
-- CI：.github/workflows/ci.yml 有 build（Linux / macOS 构建）与 e2e（macos-latest、ubuntu-24.04-arm、ubuntu-latest 三台机器上跑 test/e2e/run.sh，含六种封装的交叉装配轮次）两个作业，另加 e2e-windows：MSYS2 的 MINGW32 与 MINGW64 原生工具链，把 windows-x86 / windows-x64 真正编译并运行；appveyor.yml（Windows MSVC）只跑构建。
+- CI：.github/workflows/ci.yml 有 build（Linux / macOS 构建）与 e2e（macos-latest、ubuntu-24.04-arm、ubuntu-latest 三台机器上跑 test/e2e/run.sh，含四种 GNU 封装的交叉装配轮次）两个作业。两个 Windows 三元组归 appveyor.yml：Visual Studio 2022 镜像上先用 MSVC 构建编译器，再用 vswhere 找到安装路径、Enter-VsDevShell 按作业架构加载开发者环境（ml.exe / ml64.exe 与 link.exe 只有加载之后才在 PATH 上，加载完立刻 Get-Command 断言一次），最后把 CMake 产出的 shaolang.exe 通过 SHAOLANG 交给 test/e2e/run.sh 原生跑整套——MSYS2 在这里只当 bash 解释器用，一行编译器代码都不是 MinGW 建的。矩阵是 x86 / x64 两种架构 × Debug / Release 两种配置，端到端只在 Release 跑一轮：编译器的字长决定本机三元组，所以 x86 作业验 windows-x86、x64 作业验 windows-x64，Debug 那两轮只证明 MSVC 编得过。
 - 语法/语义与设计结论的核对方式：写 .sl 样例喂给上面编出的二进制，比对 IR 文本、诊断信息，以及 -S 产物经汇编链接后的实际运行输出；其中可复跑的那部分已经固化成 test/e2e/run.sh，见 §3.10 末。
 
 ---
@@ -413,7 +422,7 @@ shaolang 源文件 [options]
 - 优化改成工作列表 + 独立 DCE/copy propagation，并在化简后重跑一次分析。
 
 **后端**
-- 已有：三种架构在七种三元组上都能出码——macos-arm64 / linux-arm64 / macos-x86 / linux-x86 / windows-x86 / linux-x64 / windows-x64。ARM64 用 x0..x7 传参、第 9 个起走栈；X86 把一个 64 位值拆成一对 32 位字，cdecl 全栈实参，除法靠自带的 sl_divmod 逐位长除；X64 按 Microsoft 与 System V 两套 ABI 参数化（实参寄存器个数、影子空间、栈实参偏移都由两个量推出）。三者共用 8 字节槽的帧布局（数组按元素连续占槽，ARM64 超出 x29 立即数窗口时走 x10 变址）和 scanf/printf 的输入输出降级；封装侧 Mach-O、ELF、COFF 三种都覆盖，链接一律走本机 cc（Windows 是 gcc），macOS 补 -arch 与 ad-hoc 签名，linux-x86 补 -no-pie。实测递归、多实参、char 输入、字符串输出、数组与指针、600 个局部变量都能跑出正确结果，Windows 两种目标与 i386 的运行结论由 CI 的原生工具链给出。剩余的空转字段是 Function::frame_max_depth 与 current_esp_ptr（scope_esp 只 push/pop 恒为 0 的值）。
+- 已有：三种架构在七种三元组上都能出码——macos-arm64 / linux-arm64 / macos-x86 / linux-x86 / windows-x86 / linux-x64 / windows-x64。ARM64 用 x0..x7 传参、第 9 个起走栈；X86 把一个 64 位值拆成一对 32 位字，cdecl 全栈实参，除法靠自带的 sl_divmod 逐位长除；X64 一个值就是一格 8 字节槽。同一套 lowering 出两种语法：Linux 与 macOS 是 GNU 文本，两个 Windows 目标是 MASM 文本，Microsoft x64 的四个实参加 32 字节影子空间写在 MASM 版后端里。三者共用 8 字节槽的帧布局（数组按元素连续占槽，ARM64 超出 x29 立即数窗口时走 x10 变址）和 scanf/printf 的输入输出降级；封装侧 Mach-O、ELF、COFF 三种都覆盖，链接走本机 cc（macOS 补 -arch 与 ad-hoc 签名，linux-x86 补 -no-pie），Windows 走 ml / ml64 加 link。实测递归、多实参、char 输入、字符串输出、数组与指针、600 个局部变量都能跑出正确结果，Windows 两种目标与 i386 的运行结论由 CI 的原生工具链给出。剩余的空转字段是 Function::frame_max_depth 与 current_esp_ptr（scope_esp 只 push/pop 恒为 0 的值）。
 - 还差的封装只有两个：macos-x64 需要给 X64 后端补一套下划线符号与 Mach-O 段名的出路，windows-arm64 明确不在计划内（target_supported 单独给出理由）。
-- 已经固化：test/e2e/run.sh 做「编译 → 汇编 → 链接 → 运行 → 比对 stdout 与退出码」，再补 linux-arm64 / linux-x86 / linux-x64 / windows-x86 / windows-x64 / macos-x86 六种封装的交叉装配轮次（探针不通就整轮跳过）；CI 的 build、e2e、e2e-windows 三个作业分别覆盖构建、三种主机架构的原生运行，以及 MSYS2 MINGW32 / MINGW64 下两个 Windows 目标的原生运行。
+- 已经固化：test/e2e/run.sh 做「编译 → 汇编 → 链接 → 运行 → 比对 stdout 与退出码」，再补 linux-arm64 / linux-x86 / linux-x64 / macos-x86 四种 GNU 封装的交叉装配轮次（探针不通就整轮跳过）；GitHub Actions 的 build 与 e2e 覆盖构建和三种主机架构的原生运行，AppVeyor 用 MSVC 加 MASM 原生覆盖两个 Windows 目标，MASM 文本本机装不了，因此不进交叉装配轮次。
 - 结构上值得做的：寄存器分配（现在每条三地址指令都落一次栈）、字符串/字符的实际宽度（现在一律按 8 字节 64 位整数处理，%c 与 char 的 1 字节语义只在格式串上区分）、跳转表与更短的序言/尾言。
