@@ -111,7 +111,7 @@ void X64MasmCodeGenerator::allocate_frame(Function *function, vector<Intermediat
 
 void X64MasmCodeGenerator::emit_prologue() {
     line("\tpush rbp");
-    line("\tmov rsp, rbp");
+    line("\tmov rbp, rsp");
     if(frame_size > 0){
         line("\tsub rsp, " + to_dec(frame_size));
     }

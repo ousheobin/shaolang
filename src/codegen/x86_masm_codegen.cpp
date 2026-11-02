@@ -146,7 +146,7 @@ void X86MasmCodeGenerator::allocate_frame(Function *function, vector<Intermediat
 
 void X86MasmCodeGenerator::emit_prologue() {
     line("\tpush ebp");
-    line("\tmov esp, ebp");
+    line("\tmov ebp, esp");
     // ebx 用来装右操作数的高位字，是 callee-saved，进函数先保存
     line("\tpush ebx");
     if(frame_size > 0){
