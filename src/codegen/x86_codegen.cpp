@@ -216,7 +216,7 @@ void X86CodeGenerator::emit_body(vector<IntermediateInstruct *> &codes) {
             case OP_DECLARE:
                 // 字面量初值记录在变量符号上，前端不会为它生成赋值指令
                 if(left != NULL && left -> is_init() && left -> get_frame_offset() != 0){
-                    load_pair(left,LEFT_LOW,LEFT_HIGH);
+                    load_pair_immediate(left -> get_int_value(),LEFT_LOW,LEFT_HIGH);
                     store_pair(left,LEFT_LOW,LEFT_HIGH);
                 }
                 break;
