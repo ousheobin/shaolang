@@ -47,9 +47,7 @@ after_build:
     if (-not (Test-Path $devShell)) { throw "Cannot find $devShell" }
     Import-Module $devShell
     $arch = if ($env:PLATFORM -eq "x64") { "amd64" } else { "x86" }
-    # ml.exe / ml64.exe and link.exe are only on PATH after the developer environment is loaded,
-    # and the suite is the only step that needs them: it runs in this same session, so the PATH it
-    # inherits is the one set here.
+    # ml.exe / ml64.exe and link.exe are only on PATH after the developer environment is loaded.
     Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=$arch -no_logo" | Out-Null
     $assembler = if ($arch -eq "amd64") { "ml64.exe" } else { "ml.exe" }
     foreach ($tool in @($assembler, "link.exe")) {
@@ -59,9 +57,13 @@ after_build:
     if (-not (Test-Path $exe)) { throw "Cannot find $exe" }
     $env:SHAOLANG = $exe
     echo "Running the end-to-end suite with $env:SHAOLANG"
-    # Windows has its own runner. The shell script is POSIX-only, and on this image the name
-    # "timeout" resolves to System32\timeout.exe, whose syntax has nothing in common with the
-    # coreutils one the script expects.
+    # Which file the linker resolves that library to, and the printf / scanf names it carries.
+    $legacyDir = ($env:LIB -split ';' | Where-Object { Test-Path (Join-Path $_ 'legacy_stdio_definitions.lib') } | Select-Object -First 1)
+    if (-not $legacyDir) { throw "legacy_stdio_definitions.lib is not on the LIB path: $env:LIB" }
+    $legacy = Join-Path $legacyDir 'legacy_stdio_definitions.lib'
+    echo "legacy_stdio_definitions.lib = $legacy"
+    dumpbin /linkermember:1 $legacy | Select-String -Pattern 'printf|scanf' | Select-Object -First 6
+    # run.sh is POSIX-only: on this image the name timeout resolves to System32\timeout.exe.
     cmd /c test\e2e\run.bat
     if ($LASTEXITCODE -ne 0) { throw "End-to-end suite failed" }
 

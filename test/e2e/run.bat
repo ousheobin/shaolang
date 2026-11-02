@@ -47,9 +47,7 @@ if not exist "%WORK%" (
 set "PASSED=0"
 set "FAILED=0"
 
-rem Every case is found from its source: one path in, and the name, the
-rem expected output, the input and the exit code all sit next to it. The loop
-rem body passes only the bare loop variable, because a modifier glued to an
+rem The loop body passes only the bare loop variable: a modifier glued to an
 rem ordinary expansion is not substituted reliably.
 for %%f in ("%CASES%*.sl") do call :run_case "%%f"
 
@@ -99,8 +97,7 @@ if not exist "%INPUT%" set "INPUT=NUL"
 "%EXE%" < "%INPUT%" > "%OUT%" 2>&1
 set "CODE=!ERRORLEVEL!"
 
-rem The expected files are checked out with CRLF, which is what the program
-rem writes on Windows, so the two are compared as they are.
+rem Expected files are checked out with CRLF, the line endings the program writes.
 fc /b "%EXPECTED%" "%OUT%" > "%WORK%\%NAME%.diff" 2>&1
 if errorlevel 1 (
     echo FAIL %NAME% : the output differs

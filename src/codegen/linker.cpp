@@ -113,9 +113,8 @@ bool Linker::link_coff(const std::string & assembly_path,const std::string & out
     std::string object = object_path_of(assembly_path);
     std::string command = assembler + " /nologo /c";
     if(target.architecture != Architecture::X64){
-        // 32 位的 ml.exe 默认把标识符映射成大写，非本地名要靠 /Cx 保住原样，
-        // 否则和 CRT 里的 _printf 一类的名字对不上；ml64 没有 /Cu 这个选项，
-        // 大小写本来就是保留的
+        // ml.exe 默认把标识符映射成大写，非本地名要 /Cx 才和 CRT 的名字对得上；
+        // ml64 没有 /Cu，大小写本来就保留
         command += " /Cx";
     }
     command += " /Fo" + shell_quote(object) + " " + shell_quote(assembly_path);
@@ -124,15 +123,11 @@ bool Linker::link_coff(const std::string & assembly_path,const std::string & out
         failure = "装配失败：" + command;
         return false;
     }
-    // VS2015 起 CRT 拆成三块：msvcrt.lib 是本机 CRT 启动代码（mainCRTStartup 在这里），
-    // ucrt.lib 是 C 库（含 printf / scanf），vcruntime.lib 是 C++ 运行库。
-    // 名字不需要任何改写：MASM 的 C 约定在 32 位给外部名补下划线，而 32 位的 CRT 导入库
-    // 用的正是 _printf 这种带下划线的导出名，两边天然一致；64 位哪边都不补。
-    // 先前那两个方向都给的 alternatename 是让 _printf 和 printf 互相指认，链接器解不出
-    // 这种环，于是要么不改写、要么把本来能解析的引用改到没有的那个名字上去。
+    // printf / scanf 自 VS2015 起只在头文件里内联定义，UCRT 的导入库不带这两个名字，
+    // 要再链 legacy_stdio_definitions.lib 才有这些符号
     command = "link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:" + shell_quote(output_path)
               + " " + shell_quote(object)
-              + " msvcrt.lib ucrt.lib vcruntime.lib";
+              + " msvcrt.lib ucrt.lib vcruntime.lib legacy_stdio_definitions.lib";
     bool linked = std::system(command.c_str()) == 0;
     std::remove(object.c_str());
     if(!linked){
