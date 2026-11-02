@@ -93,17 +93,18 @@ if not exist "%EXE%" (
     exit /b 0
 )
 
+rem Start-Process redirects from a file, so a case with no input of its own gets
+rem an empty one.
 set "INPUT=%DIR%%NAME%.in"
 if not exist "%INPUT%" (
-    rem Start-Process needs a file to redirect from, and a case with no input
-    still needs one: an empty file is what the run should read.
     type nul > "%WORK%\%NAME%.in"
     set "INPUT=%WORK%\%NAME%.in"
 )
-rem cmd.exe has no timeout, so the run goes through PowerShell, which can kill a
-rem case that never returns; one such case would otherwise park the whole suite.
-rem The code 124 is the one the POSIX timeout reports.
-powershell -NoProfile -Command "$p = Start-Process -FilePath '%EXE%' -RedirectStandardInput '%INPUT%' -RedirectStandardOutput '%OUT%' -RedirectStandardError '%ERR%' -NoNewWindow -PassThru; if (-not $p.WaitForExit(60000)) { $p.Kill(); exit 124 }; exit $p.ExitCode"
+rem cmd.exe has no timeout, so PowerShell runs the case and can kill one that never
+rem returns; 124 is the code the POSIX timeout reports. The handle has to be read
+rem before the wait, because a process started with -NoNewWindow has none left by
+rem then, and its missing ExitCode would quietly become 0.
+powershell -NoProfile -Command "$p = Start-Process -FilePath '%EXE%' -RedirectStandardInput '%INPUT%' -RedirectStandardOutput '%OUT%' -RedirectStandardError '%ERR%' -NoNewWindow -PassThru; $handle = $p.Handle; if (-not $p.WaitForExit(60000)) { $p.Kill(); exit 124 }; $p.WaitForExit(); if ($null -eq $p.ExitCode) { Write-Output 'the case reported no exit code'; exit 125 }; exit $p.ExitCode"
 set "CODE=!ERRORLEVEL!"
 del "%WORK%\%NAME%.in" >nul 2>&1
 type "%ERR%" >> "%OUT%" 2>nul
