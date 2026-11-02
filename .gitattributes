@@ -1,0 +1,10 @@
+# The end-to-end suite compares the expected outputs byte for byte against
+# what the program prints. A Windows program writes CRLF, so the expected
+# files are checked out with CRLF everywhere and the POSIX suite drops the CR
+# before it compares. The exit codes are read as text, so they keep LF.
+test/e2e/*.expected text eol=crlf
+test/e2e/*.exit text eol=lf
+# The two runners are read by their own interpreter, so each needs the line
+# endings it expects: bash refuses the CR and cmd.exe loses its labels with LF.
+test/e2e/run.sh text eol=lf
+test/e2e/run.bat text eol=crlf

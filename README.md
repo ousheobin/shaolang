@@ -76,4 +76,4 @@ Seven targets cover three architectures; windows-arm64 stays out of scope. Each 
 | windows-x86 | Windows | i386 | MASM | Visual Studio: ml and link |
 | windows-x64 | Windows | x86-64 | MASM | Visual Studio: ml64 and link |
 
-Regression tests live in test/e2e: one .sl source plus the .expected output per case, run by test/e2e/run.sh, which builds the compiler, compiles every case and compares stdout and exit status byte for byte.
+Regression tests live in test/e2e: one .sl source plus the .expected output per case, run by test/e2e/run.sh on macOS and Linux and test/e2e/run.bat on Windows. Each runner builds or takes the compiler, compiles every case, runs it and compares stdout and exit status byte for byte; the batch one needs the Visual Studio tools on the PATH, the same way the compiler does.

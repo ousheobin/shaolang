@@ -349,7 +349,7 @@ MASM 特有的两个坑由命名兜住。IR 标号形如 .L1，开头的点 MASM
 
 中间汇编的位置由驱动决定（temp_assembly_path，shaolang.cpp:44-86）：Windows 用 GetTempPathA，其余平台按 TMPDIR、TMP、TEMP、/var/tmp、/tmp 的顺序试，每个候选都要先过 usable_directory()（32-42）——Windows 查目录属性，POSIX 查 stat + S_ISDIR + access(R_OK|W_OK|X_OK)——因为环境变量给的路径未必是本机可执行文件认得出的那种（MSYS 一类的环境只转 argv，不转环境变量，会把 TMP 原样给成 /tmp），全部不可用就退回当前目录。文件名是 shaolang-进程号-文件序号.s（Windows 下是 .asm，因为 ml.exe 按扩展名挑汇编器），一律不带源文件名，因此编译 a.sl 不可能撞掉 /tmp 里别人的 a；链接一结束，成败都删（218-231），真要看汇编用 -S，那才是留给用户的产物。
 
-实测覆盖面由仓库里的 test/e2e/run.sh 维护：25 组随仓库提交的用例（.sl 配 .expected，脚本自定位、工作目录自己按盘符路径建，不在仓库里留中间产物）加上运行时生成的 300 / 600 个局部变量两组深栈用例，覆盖全局变量与 char 全局、局部字面初值、8 个以内与超过 8 个实参的调用（10 个实参求和 55 正确）、递归（fib(10) = 55）、void 调用、while / if / break / continue、input（int、char、数组元素、解引用单元）、字符串 output、300 与 600 个局部变量两种深度（后者已走 mov x10 的超窗口路径）、加减乘除与取模、负数、123456789 这类需要 movz + movk 拼出来的大常量，以及数组下标读写、取地址与解引用、指针传参、指针相减、通过单元自增。每组都要过「编译→装配→链接→运行→逐字节比对 stdout」，用例目录里另有 .in 喂标准输入、.exit 记期望退出码，两者也参与比对；Windows 上找可执行文件要带 .exe 后缀，脚本按 uname 的 NT 分支决定。
+实测覆盖面由仓库里的 test/e2e 维护，macOS 和 Linux 用 run.sh，Windows 用 run.bat：25 组随仓库提交的用例（.sl 配 .expected，两个脚本都自定位，中间产物只写系统临时目录，不在仓库里留任何结果）加上运行时生成的 300 / 600 个局部变量两组深栈用例，覆盖全局变量与 char 全局、局部字面初值、8 个以内与超过 8 个实参的调用（10 个实参求和 55 正确）、递归（fib(10) = 55）、void 调用、while / if / break / continue、input（int、char、数组元素、解引用单元）、字符串 output、300 与 600 个局部变量两种深度（后者已走 mov x10 的超窗口路径）、加减乘除与取模、负数、123456789 这类需要 movz + movk 拼出来的大常量，以及数组下标读写、取地址与解引用、指针传参、指针相减、通过单元自增。每组都要过「编译→装配→链接→运行→逐字节比对 stdout」，用例目录里另有 .in 喂标准输入、.exit 记期望退出码，两者也参与比对。两套脚本不能合成一套：Windows 的 CRT 在文本模式把换行写成回车换行，.expected 因此由 .gitattributes 一律按回车换行检出，run.bat 用 fc /b 直接比字节，run.sh 则先把回车去掉；行尾之外，AppVeyor 镜像上的 PATH 里 System32 的 timeout.exe 会盖掉同名 GNU 工具，两者语法毫无关系，bash 脚本在那台机器上只会把每条命令都在启动前打死。
 
 本机跑不了的 GNU 封装由 cross_round()（145-172，调用在 178-181）做交叉装配轮次：同一个用例用 --target= 指定三元组出一份汇编，再交给 clang --target= 装配成目标格式的目标文件，只验证「这份汇编本机的汇编器认不认」，链接与运行仍归各平台的原生作业。轮次覆盖 linux-arm64、linux-x86、linux-x64、macos-x86，每种先拿一小段目标架构的基础指令做探针，工具链不支持就打印跳过、不计失败，所以在没有交叉汇编器的机器上跑整套也只是少跑几轮。两个 Windows 三元组不在这里：它们产的是 MASM 文本，本机的 clang 装不了，交叉装配没有意义，真正的验证由 AppVeyor 用 Visual Studio 的工具链原生完成（见下节）。同一份 ARM64 产码在 --target=linux-arm64 下只有六处形态差异：无 .subsections_via_symbols、符号不带下划线前缀、多了 .type/@function 与 .size、段名换成 .rodata / .data（全局还额外加 .hidden + .type/@object）、页引用由 adrp+add @PAGE/@PAGEOFF 换成 adrp + add :lo12:、局部标号保留 IR 原本的 .L 前缀。
 
@@ -388,8 +388,8 @@ shaolang 源文件 [options]
   c++ -std=c++11 -Isrc -DMAC_OSX -DLF $(find src -name '*.cpp') -o shaolang
   
   -S 的产物可以手工链接（cc -arch arm64 x.s -o x），也可以让编译器自己走完（shaolang x.sl -o x）。
-- CI：.github/workflows/ci.yml 有 build（Linux / macOS 构建）与 e2e（macos-latest、ubuntu-24.04-arm、ubuntu-latest 三台机器上跑 test/e2e/run.sh，含四种 GNU 封装的交叉装配轮次）两个作业。两个 Windows 三元组归 appveyor.yml：Visual Studio 2022 镜像上先用 MSVC 构建编译器，再用 vswhere 找到安装路径、Enter-VsDevShell 按作业架构加载开发者环境（ml.exe / ml64.exe 与 link.exe 只有加载之后才在 PATH 上，加载完立刻 Get-Command 断言一次），最后把 CMake 产出的 shaolang.exe 通过 SHAOLANG 交给 test/e2e/run.sh 原生跑整套——MSYS2 在这里只当 bash 解释器用，一行编译器代码都不是 MinGW 建的。矩阵是 x86 / x64 两种架构 × Debug / Release 两种配置，端到端只在 Release 跑一轮：编译器的字长决定本机三元组，所以 x86 作业验 windows-x86、x64 作业验 windows-x64，Debug 那两轮只证明 MSVC 编得过。
-- 语法/语义与设计结论的核对方式：写 .sl 样例喂给上面编出的二进制，比对 IR 文本、诊断信息，以及 -S 产物经汇编链接后的实际运行输出；其中可复跑的那部分已经固化成 test/e2e/run.sh，见 §3.10 末。
+- CI：.github/workflows/ci.yml 有 build（Linux / macOS 构建）与 e2e（macos-latest、ubuntu-24.04-arm、ubuntu-latest 三台机器上跑 test/e2e/run.sh，含四种 GNU 封装的交叉装配轮次）两个作业。两个 Windows 三元组归 appveyor.yml：Visual Studio 2022 镜像上先用 MSVC 构建编译器，再用 vswhere 找到安装路径、Enter-VsDevShell 按作业架构加载开发者环境（ml.exe / ml64.exe 与 link.exe 只有加载之后才在 PATH 上，加载完立刻 Get-Command 断言一次）；加载和跑套件是同一步，之后把 CMake 产出的 shaolang.exe 通过 SHAOLANG 交给 test/e2e/run.bat 原生跑整套，一行编译器代码都不是 MinGW 建的。矩阵是 x86 / x64 两种架构 × Debug / Release 两种配置，端到端只在 Release 跑一轮：编译器的字长决定本机三元组，所以 x86 作业验 windows-x86、x64 作业验 windows-x64，Debug 那两轮只证明 MSVC 编得过。
+- 语法/语义与设计结论的核对方式：写 .sl 样例喂给上面编出的二进制，比对 IR 文本、诊断信息，以及 -S 产物经汇编链接后的实际运行输出；其中可复跑的那部分已经固化成 test/e2e 的两套脚本，见 §3.10 末。
 
 ---
 
@@ -424,5 +424,5 @@ shaolang 源文件 [options]
 **后端**
 - 已有：三种架构在七种三元组上都能出码——macos-arm64 / linux-arm64 / macos-x86 / linux-x86 / windows-x86 / linux-x64 / windows-x64。ARM64 用 x0..x7 传参、第 9 个起走栈；X86 把一个 64 位值拆成一对 32 位字，cdecl 全栈实参，除法靠自带的 sl_divmod 逐位长除；X64 一个值就是一格 8 字节槽。同一套 lowering 出两种语法：Linux 与 macOS 是 GNU 文本，两个 Windows 目标是 MASM 文本，Microsoft x64 的四个实参加 32 字节影子空间写在 MASM 版后端里。三者共用 8 字节槽的帧布局（数组按元素连续占槽，ARM64 超出 x29 立即数窗口时走 x10 变址）和 scanf/printf 的输入输出降级；封装侧 Mach-O、ELF、COFF 三种都覆盖，链接走本机 cc（macOS 补 -arch 与 ad-hoc 签名，linux-x86 补 -no-pie），Windows 走 ml / ml64 加 link。实测递归、多实参、char 输入、字符串输出、数组与指针、600 个局部变量都能跑出正确结果，Windows 两种目标与 i386 的运行结论由 CI 的原生工具链给出。剩余的空转字段是 Function::frame_max_depth 与 current_esp_ptr（scope_esp 只 push/pop 恒为 0 的值）。
 - 还差的封装只有两个：macos-x64 需要给 X64 后端补一套下划线符号与 Mach-O 段名的出路，windows-arm64 明确不在计划内（target_supported 单独给出理由）。
-- 已经固化：test/e2e/run.sh 做「编译 → 汇编 → 链接 → 运行 → 比对 stdout 与退出码」，再补 linux-arm64 / linux-x86 / linux-x64 / macos-x86 四种 GNU 封装的交叉装配轮次（探针不通就整轮跳过）；GitHub Actions 的 build 与 e2e 覆盖构建和三种主机架构的原生运行，AppVeyor 用 MSVC 加 MASM 原生覆盖两个 Windows 目标，MASM 文本本机装不了，因此不进交叉装配轮次。
+- 已经固化：test/e2e/run.sh 与 test/e2e/run.bat 各自做「编译 → 汇编 → 链接 → 运行 → 比对 stdout 与退出码」，只有前者还补 linux-arm64 / linux-x86 / linux-x64 / macos-x86 四种 GNU 封装的交叉装配轮次（探针不通就整轮跳过）；GitHub Actions 的 build 与 e2e 覆盖构建和三种主机架构的原生运行，AppVeyor 用 MSVC 加 MASM 原生覆盖两个 Windows 目标，MASM 文本本机装不了，因此不进交叉装配轮次。
 - 结构上值得做的：寄存器分配（现在每条三地址指令都落一次栈）、字符串/字符的实际宽度（现在一律按 8 字节 64 位整数处理，%c 与 char 的 1 字节语义只在格式串上区分）、跳转表与更短的序言/尾言。
