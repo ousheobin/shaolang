@@ -76,6 +76,7 @@ set "NAME=%~n1"
 set "EXPECTED=%DIR%%NAME%.expected"
 set "EXE=%WORK%\%NAME%.exe"
 set "OUT=%WORK%\%NAME%.out"
+set "ERR=%WORK%\%NAME%.err"
 set "LOG=%WORK%\%NAME%.log"
 
 "%SHAOLANG%" "%SRC%" -o "%EXE%" > "%LOG%" 2>&1
@@ -93,9 +94,24 @@ if not exist "%EXE%" (
 )
 
 set "INPUT=%DIR%%NAME%.in"
-if not exist "%INPUT%" set "INPUT=NUL"
-"%EXE%" < "%INPUT%" > "%OUT%" 2>&1
+if not exist "%INPUT%" (
+    rem Start-Process needs a file to redirect from, and a case with no input
+    still needs one: an empty file is what the run should read.
+    type nul > "%WORK%\%NAME%.in"
+    set "INPUT=%WORK%\%NAME%.in"
+)
+rem cmd.exe has no timeout, so the run goes through PowerShell, which can kill a
+rem case that never returns; one such case would otherwise park the whole suite.
+rem The code 124 is the one the POSIX timeout reports.
+powershell -NoProfile -Command "$p = Start-Process -FilePath '%EXE%' -RedirectStandardInput '%INPUT%' -RedirectStandardOutput '%OUT%' -RedirectStandardError '%ERR%' -NoNewWindow -PassThru; if (-not $p.WaitForExit(60000)) { $p.Kill(); exit 124 }; exit $p.ExitCode"
 set "CODE=!ERRORLEVEL!"
+del "%WORK%\%NAME%.in" >nul 2>&1
+type "%ERR%" >> "%OUT%" 2>nul
+if "!CODE!"=="124" (
+    echo FAIL %NAME% : the case did not finish in 60s
+    set /a FAILED+=1
+    exit /b 0
+)
 
 rem Expected files are checked out with CRLF, the line endings the program writes.
 fc /b "%EXPECTED%" "%OUT%" > "%WORK%\%NAME%.diff" 2>&1
