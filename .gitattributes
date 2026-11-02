@@ -4,6 +4,11 @@
 # before it compares. The exit codes are read as text, so they keep LF.
 test/e2e/*.expected text eol=crlf
 test/e2e/*.exit text eol=lf
+# The sources and their standard input are the bytes the compiler is fed, and
+# both runners must see the same ones; the case the suite generates itself on
+# Windows still arrives as CRLF, so that path is not left untested.
+test/e2e/*.sl text eol=lf
+test/e2e/*.in text eol=lf
 # The two runners are read by their own interpreter, so each needs the line
 # endings it expects: bash refuses the CR and cmd.exe loses its labels with LF.
 test/e2e/run.sh text eol=lf

@@ -47,16 +47,20 @@ if not exist "%WORK%" (
 set "PASSED=0"
 set "FAILED=0"
 
-for %%f in ("%CASES%*.sl") do call :run_case "%%~nF" "%CASES%%%~nF.sl" "%CASES%%%~nF.expected"
+rem Every case is found from its source: one path in, and the name, the
+rem expected output, the input and the exit code all sit next to it. The loop
+rem body passes only the bare loop variable, because a modifier glued to an
+rem ordinary expansion is not substituted reliably.
+for %%f in ("%CASES%*.sl") do call :run_case "%%f"
 
 rem The deep-frame cases are not committed: the number of locals decides the
 rem frame size, which is what exercises the addressing beyond the small
 rem immediate range. The expected sum is computed here, not taken from the
 rem compiler.
 call :gen_deep 300
-call :run_case deepFrame300 "%WORK%\deepFrame300.sl" "%WORK%\deepFrame300.expected"
+call :run_case "%WORK%\deepFrame300.sl"
 call :gen_deep 600
-call :run_case deepFrame600 "%WORK%\deepFrame600.sl" "%WORK%\deepFrame600.expected"
+call :run_case "%WORK%\deepFrame600.sl"
 
 echo.
 echo passed %PASSED%, failed %FAILED%
@@ -68,9 +72,10 @@ exit /b 1
 
 rem Compile one case, run it, and compare its output and exit code.
 :run_case
-set "NAME=%~1"
-set "SRC=%~2"
-set "EXPECTED=%~3"
+set "SRC=%~1"
+set "DIR=%~dp1"
+set "NAME=%~n1"
+set "EXPECTED=%DIR%%NAME%.expected"
 set "EXE=%WORK%\%NAME%.exe"
 set "OUT=%WORK%\%NAME%.out"
 set "LOG=%WORK%\%NAME%.log"
@@ -89,7 +94,7 @@ if not exist "%EXE%" (
     exit /b 0
 )
 
-set "INPUT=%CASES%%NAME%.in"
+set "INPUT=%DIR%%NAME%.in"
 if not exist "%INPUT%" set "INPUT=NUL"
 "%EXE%" < "%INPUT%" > "%OUT%" 2>&1
 set "CODE=!ERRORLEVEL!"
@@ -104,9 +109,9 @@ if errorlevel 1 (
     exit /b 0
 )
 
-if exist "%CASES%%NAME%.exit" (
+if exist "%DIR%%NAME%.exit" (
     set "WANT="
-    for /f "usebackq tokens=* delims=" %%c in ("%CASES%%NAME%.exit") do set "WANT=%%c"
+    for /f "usebackq tokens=* delims=" %%c in ("%DIR%%NAME%.exit") do set "WANT=%%c"
     if not "!CODE!"=="!WANT!" (
         echo FAIL %NAME% : exit code !CODE!, expected !WANT!
         set /a FAILED+=1
@@ -125,8 +130,9 @@ set "NAME=deepFrame%N%"
 set "EXPR=  output 0"
 > "%WORK%\%NAME%.sl" echo -[int] main(){
 for /l %%i in (1,1,%N%) do (
-    >> "%WORK%\%NAME%.sl" echo   int v%%i = %%i;
-    set "EXPR=!EXPR! + v%%i"
+    set "V=%%i"
+    >> "%WORK%\%NAME%.sl" echo   int v!V! = !V!;
+    set "EXPR=!EXPR! + v!V!"
 )
 >> "%WORK%\%NAME%.sl" echo !EXPR!;
 >> "%WORK%\%NAME%.sl" echo   output "\n";
