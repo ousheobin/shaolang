@@ -4,6 +4,14 @@
 
 A tiny compiler.
 
+### Documentation ###
+
+Every document comes in one language only, and each English one links its Chinese twin:
+
+- [doc/cookbook_EN.md](doc/cookbook_EN.md) — how to write programs in ShaoLang: one recipe per shape, each compiled and run against the current build. 中文：[doc/cookbook.md](doc/cookbook.md)
+- [doc/grammar_EN.md](doc/grammar_EN.md) — the grammar, the constructs that are rejected, and the known gaps. 中文：[doc/grammar.md](doc/grammar.md)
+- [doc/compiler-design_EN.md](doc/compiler-design_EN.md) — how the compiler works, from the lexer to the seven back ends. 中文：[doc/compiler-design.md](doc/compiler-design.md)
+
 ### Dependencies ###
 
 - CMake (3.10 and above)
@@ -41,7 +49,7 @@ Visual Studio is a multi-config generator, so the executable lands in build/Rele
 shaolang source-file [options]
 ```
 
-Like gcc and javac, the default job is to produce a program: shaolang assembles the intermediate code into target assembly, then runs the host toolchain to link it. Without -o the executable is written to the current directory under the source file's own name, so shaolang demo.sl leaves ./demo. Nothing is printed on the way; diagnostics are the only output.
+Like gcc and javac, the default job is to produce a program: shaolang assembles the intermediate code into target assembly, then runs the host toolchain to link it. Without -o the executable is written to the current directory under the source file's own name, so shaolang demo.sl leaves ./demo. Nothing is printed on the way; diagnostics are the only output. Several sources on one command line are each compiled on their own — nothing is shared between them and -o then has no single output to name, so it is refused. For the language itself, start with the [cookbook](doc/cookbook_EN.md).
 
 | Option | Effect |
 | --- | --- |
