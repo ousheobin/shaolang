@@ -76,7 +76,6 @@ set "NAME=%~n1"
 set "EXPECTED=%DIR%%NAME%.expected"
 set "EXE=%WORK%\%NAME%.exe"
 set "OUT=%WORK%\%NAME%.out"
-set "ERR=%WORK%\%NAME%.err"
 set "LOG=%WORK%\%NAME%.log"
 
 "%SHAOLANG%" "%SRC%" -o "%EXE%" > "%LOG%" 2>&1
@@ -93,26 +92,41 @@ if not exist "%EXE%" (
     exit /b 0
 )
 
-rem Start-Process redirects from a file, so a case with no input of its own gets
+rem cmd reads the case's stdin from a file, so a case with no input of its own gets
 rem an empty one.
 set "INPUT=%DIR%%NAME%.in"
 if not exist "%INPUT%" (
     type nul > "%WORK%\%NAME%.in"
     set "INPUT=%WORK%\%NAME%.in"
 )
-rem cmd.exe has no timeout, so PowerShell runs the case and can kill one that never
-rem returns; 124 is the code the POSIX timeout reports. The handle has to be read
-rem before the wait, because a process started with -NoNewWindow has none left by
-rem then, and its missing ExitCode would quietly become 0.
-powershell -NoProfile -Command "$p = Start-Process -FilePath '%EXE%' -RedirectStandardInput '%INPUT%' -RedirectStandardOutput '%OUT%' -RedirectStandardError '%ERR%' -NoNewWindow -PassThru; $handle = $p.Handle; if (-not $p.WaitForExit(60000)) { $p.Kill(); exit 124 }; $p.WaitForExit(); if ($null -eq $p.ExitCode) { Write-Output 'the case reported no exit code'; exit 125 }; exit $p.ExitCode"
-set "CODE=!ERRORLEVEL!"
+rem The case runs from a batch file written next to it, which redirects to the
+rem output files and then puts its exit code in a file of its own: the code is read
+rem after the process is gone, and a file is the one place the number is still
+rem there. A missing code file is a case that never finished reporting. PowerShell
+rem is only the clock, because cmd.exe has no timeout; 124 is the code the POSIX
+rem timeout reports, and the whole tree is killed so a stuck case cannot hold the
+rem console open.
+set "RUNBAT=%WORK%\%NAME%.cmd"
+set "CODEFILE=%WORK%\%NAME%.code"
+del "%CODEFILE%" >nul 2>&1
+> "%RUNBAT%" echo @echo off
+>> "%RUNBAT%" echo "%EXE%" ^< "%INPUT%" ^> "%OUT%" 2^>^&1
+>> "%RUNBAT%" echo echo %%ERRORLEVEL%%^> "%CODEFILE%"
+powershell -NoProfile -Command "$p = Start-Process -FilePath $env:RUNBAT -WindowStyle Hidden -PassThru; if (-not $p.WaitForExit(60000)) { taskkill.exe /PID $p.Id /T /F | Out-Null; exit 124 }"
+set "SUPERVISOR=%ERRORLEVEL%"
 del "%WORK%\%NAME%.in" >nul 2>&1
-type "%ERR%" >> "%OUT%" 2>nul
-if "!CODE!"=="124" (
+if "%SUPERVISOR%"=="124" (
     echo FAIL %NAME% : the case did not finish in 60s
     set /a FAILED+=1
     exit /b 0
 )
+if not exist "%CODEFILE%" (
+    echo FAIL %NAME% : the case did not report an exit code
+    set /a FAILED+=1
+    exit /b 0
+)
+set "CODE="
+for /f "usebackq tokens=* delims=" %%c in ("%CODEFILE%") do set "CODE=%%c"
 
 rem Expected files are checked out with CRLF, the line endings the program writes.
 fc /b "%EXPECTED%" "%OUT%" > "%WORK%\%NAME%.diff" 2>&1
